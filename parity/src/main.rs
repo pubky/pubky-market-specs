@@ -126,9 +126,27 @@ struct Case {
     owner: String,
     id: Option<String>,
     blob: Vec<u8>,
-    /// For a forgery: the observation that must be `err` in both crates
-    /// while it is `ok` for the seed.
-    forged: Option<&'static str>,
+    expect: Expect,
+}
+
+/// What `pubky-app-specs` itself must do with a case, on top of the two
+/// crates agreeing. A case that fails its expectation is a broken harness.
+#[derive(Clone, Copy, PartialEq)]
+enum Expect {
+    None,
+    /// A forgery: the observation must be `err` while it is `ok` for the seed.
+    Reject(&'static str),
+    /// A control: the observation must be `ok`.
+    Accept(&'static str),
+}
+
+impl Expect {
+    fn rejected_observation(self) -> Option<&'static str> {
+        match self {
+            Expect::Reject(key) => Some(key),
+            _ => None,
+        }
+    }
 }
 
 fn base64url_decode(input: &str) -> Option<Vec<u8>> {
@@ -166,15 +184,20 @@ fn sign_compact(header: &Value, claims: &Value, key: &SigningKey) -> String {
     )
 }
 
-/// The JWS fields of `seed` signed with the test key, as (field, header, claims).
-fn test_signed_jws(seed: &Seed) -> Vec<(&'static str, Value, Value)> {
-    let key = SigningKey::from_bytes(&TEST_ATTESTOR_SECRET);
+/// A JWS field of a seed that the test key signed.
+struct TestSigned {
+    field: &'static str,
+    header: Value,
+    claims: Value,
+    /// The exact `header_b64.payload_b64` the seed's signature covers.
+    signing_input: String,
+}
+
+/// The JWS fields of `seed` whose signature verifies under the test key.
+fn test_signed_jws(seed: &Seed) -> Vec<TestSigned> {
+    let verifying_key = SigningKey::from_bytes(&TEST_ATTESTOR_SECRET).verifying_key();
     let mut out = Vec::new();
-    for field in [
-        "eligibilityAttestation",
-        "receiptAttestation",
-        "editionAttestation",
-    ] {
+    for field in JWS_FIELDS {
         let Some(jws) = seed.record.get(field).and_then(Value::as_str) else {
             continue;
         };
@@ -182,19 +205,31 @@ fn test_signed_jws(seed: &Seed) -> Vec<(&'static str, Value, Value)> {
         if parts.len() != 3 {
             continue;
         }
-        let (Some(header), Some(payload)) =
-            (base64url_decode(parts[0]), base64url_decode(parts[1]))
-        else {
-            continue;
-        };
-        let (Ok(header), Ok(claims)) = (
-            serde_json::from_slice::<Value>(&header),
-            serde_json::from_slice::<Value>(&payload),
+        let (Some(header), Some(payload), Some(signature)) = (
+            base64url_decode(parts[0]),
+            base64url_decode(parts[1]),
+            base64url_decode(parts[2]),
         ) else {
             continue;
         };
-        if sign_compact(&header, &claims, &key) == jws {
-            out.push((field, header, claims));
+        let (Ok(header), Ok(claims), Ok(signature)) = (
+            serde_json::from_slice::<Value>(&header),
+            serde_json::from_slice::<Value>(&payload),
+            ed25519_dalek::Signature::from_slice(&signature),
+        ) else {
+            continue;
+        };
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        if verifying_key
+            .verify_strict(signing_input.as_bytes(), &signature)
+            .is_ok()
+        {
+            out.push(TestSigned {
+                field,
+                header,
+                claims,
+                signing_input,
+            });
         }
     }
     out
@@ -280,13 +315,18 @@ fn forgeries(seed: &Seed) -> Vec<(String, Value, &'static str)> {
             }
         }
     }
-    for (field, header, claims) in test_signed_jws(seed) {
+    for signed in test_signed_jws(seed) {
+        let signature = other.sign(signed.signing_input.as_bytes());
         let mut record = seed.record.clone();
-        record[field] = json!(sign_compact(&header, &claims, &other));
+        record[signed.field] = json!(format!(
+            "{}.{}",
+            signed.signing_input,
+            ours::base64url_encode(&signature.to_bytes())
+        ));
         out.push((
-            format!("forged: {field} signed by another key"),
+            format!("forged: {} signed by another key", signed.field),
             record,
-            signature_observation(field),
+            signature_observation(signed.field),
         ));
     }
     if matches!(seed.kind, Kind::AttestorProfile | Kind::AttestorAnnotation) {
@@ -326,21 +366,20 @@ fn build_cases(seeds: &[Seed]) -> Vec<Case> {
     let mut cases = Vec::new();
     for seed in seeds {
         let attestor = matches!(seed.kind, Kind::AttestorProfile | Kind::AttestorAnnotation);
-        let push_case =
-            |cases: &mut Vec<Case>, label: String, blob: Vec<u8>, forged: Option<&'static str>| {
-                cases.push(Case {
-                    seed: seed.name.clone(),
-                    label,
-                    kind_name: seed.kind_name.clone(),
-                    kind: seed.kind,
-                    owner: seed.owner.clone(),
-                    id: seed.id.clone(),
-                    blob,
-                    forged,
-                })
-            };
+        let push_case = |cases: &mut Vec<Case>, label: String, blob: Vec<u8>, expect: Expect| {
+            cases.push(Case {
+                seed: seed.name.clone(),
+                label,
+                kind_name: seed.kind_name.clone(),
+                kind: seed.kind,
+                owner: seed.owner.clone(),
+                id: seed.id.clone(),
+                blob,
+                expect,
+            })
+        };
         let push = |cases: &mut Vec<Case>, label: String, blob: Vec<u8>| {
-            push_case(cases, label, blob, None)
+            push_case(cases, label, blob, Expect::None)
         };
         push(
             &mut cases,
@@ -355,19 +394,34 @@ fn build_cases(seeds: &[Seed]) -> Vec<Case> {
             };
             push(&mut cases, label, blob);
         }
-        for (field, header, claims) in test_signed_jws(seed) {
-            for (label, mutated) in mutate::mutations(&claims) {
+        for signed in test_signed_jws(seed) {
+            let TestSigned {
+                field,
+                header,
+                claims,
+                ..
+            } = &signed;
+            let field = *field;
+            let mut record = seed.record.clone();
+            record[field] = json!(sign_compact(header, claims, &key));
+            push_case(
+                &mut cases,
+                format!("{field} re-encoded and re-signed (baseline)"),
+                serde_json::to_vec(&record).unwrap(),
+                Expect::Accept(signature_observation(field)),
+            );
+            for (label, mutated) in mutate::mutations(claims) {
                 let mut record = seed.record.clone();
-                record[field] = json!(sign_compact(&header, &mutated, &key));
+                record[field] = json!(sign_compact(header, &mutated, &key));
                 push(
                     &mut cases,
                     format!("{field} claims {label} (re-signed)"),
                     serde_json::to_vec(&record).unwrap(),
                 );
             }
-            for (label, mutated) in mutate::mutations(&header) {
+            for (label, mutated) in mutate::mutations(header) {
                 let mut record = seed.record.clone();
-                record[field] = json!(sign_compact(&mutated, &claims, &key));
+                record[field] = json!(sign_compact(&mutated, claims, &key));
                 push(
                     &mut cases,
                     format!("{field} header {label} (re-signed)"),
@@ -380,7 +434,7 @@ fn build_cases(seeds: &[Seed]) -> Vec<Case> {
                 &mut cases,
                 label,
                 serde_json::to_vec(&record).unwrap(),
-                Some(observation),
+                Expect::Reject(observation),
             );
         }
     }
@@ -420,6 +474,7 @@ fn check_records(cases: &[Case], report: &mut Report) {
     let mut verified = 0;
     let mut failures = 0;
     let mut forged = 0;
+    let mut controls = 0;
     let observed = |case: &Case| {
         let uri = case_uri(case);
         fork_side::observe(
@@ -460,7 +515,18 @@ fn check_records(cases: &[Case], report: &mut Report) {
             .filter(|(k, v)| k.ends_with("verified") && v.starts_with("ok:"))
             .count();
         observations += fork.len();
-        if let Some(key) = case.forged {
+        if let Expect::Accept(key) = case.expect {
+            controls += 1;
+            let value = fork.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone());
+            if !value.as_deref().is_some_and(|v| v.starts_with("ok:")) {
+                failures += 1;
+                report.mismatch(format!(
+                    "{} {}: harness: pubky-app-specs must accept this control on `{key}` (got {value:?})",
+                    case.seed, case.label
+                ));
+            }
+        }
+        if let Expect::Reject(key) = case.expect {
             forged += 1;
             let value = |obs: &[(&'static str, String)]| {
                 obs.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
@@ -492,7 +558,7 @@ fn check_records(cases: &[Case], report: &mut Report) {
         "records",
         cases.len(),
         &format!(
-            " ({accepted} accepted by pubky-app-specs, {verified} attestations verified, {forged} forgeries rejected, {observations} observations, {failures} differ)"
+            " ({accepted} accepted by pubky-app-specs, {verified} attestations verified, {forged} forgeries rejected, {controls} re-signed controls accepted, {observations} observations, {failures} differ)"
         ),
     );
 }
@@ -1049,7 +1115,7 @@ fn vectors_document(
     for seed in seeds {
         let seed_cases: Vec<&Case> = cases.iter().filter(|c| c.seed == seed.name).collect();
         for (index, case) in seed_cases.iter().enumerate() {
-            if index != 0 && index % VECTOR_SAMPLE_EVERY != 0 && case.forged.is_none() {
+            if index != 0 && index % VECTOR_SAMPLE_EVERY != 0 && case.expect == Expect::None {
                 continue;
             }
             let uri = case_uri(case);
@@ -1070,7 +1136,7 @@ fn vectors_document(
                 "id": case.id,
                 "uri": uri,
                 "input": String::from_utf8(case.blob.clone()).unwrap(),
-                "forgedObservation": case.forged,
+                "forgedObservation": case.expect.rejected_observation(),
                 "expected": expected,
             }));
         }
@@ -1100,7 +1166,7 @@ fn corpus(cases: &[Case]) -> String {
                 "id": case.id,
                 "uri": case_uri(case),
                 "input": String::from_utf8(case.blob.clone()).unwrap(),
-                "forgedObservation": case.forged,
+                "forgedObservation": case.expect.rejected_observation(),
             })
         })
         .collect();

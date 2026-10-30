@@ -94,7 +94,7 @@ fn forged_signatures_are_rejected() {
             vector["case"]
         );
     }
-    assert_eq!(forged, 22, "every forgery is in the vectors file");
+    assert_eq!(forged, 28, "every forgery is in the vectors file");
 }
 
 #[test]

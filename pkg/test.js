@@ -871,7 +871,7 @@ describe("pubky-market-specs", () => {
         "edition verified": { order_receipt: verifyDropEditionAttestation },
       };
       const forged = vectors.records.filter((v) => v.forgedObservation);
-      assert.strictEqual(forged.length, 22);
+      assert.strictEqual(forged.length, 28);
       for (const vector of forged) {
         if (vector.kind === "attestor_profile") {
           assert.throws(() => verifyAttestorProfile(vector.uri, vector.input), vector.case);

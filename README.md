@@ -78,7 +78,7 @@ Every `build*` function takes the owner's pubky and the record as a camelCase ob
 
 ## Parity with pubky-app-specs
 
-[`parity/`](parity/) builds both libraries side by side and compares them on 18 seed records covering every kind, every structural mutation of every seed (other types, boundary numbers, edge-case strings, removed and unknown members), attestations re-signed after each claim or header mutation, attestor records re-signed after mutation, 22 forgeries (signatures with a flipped bit, signatures and attestor proofs by another key) that `pubky-app-specs` must reject, generated listing ids decoded against the clock, 1,582 URIs, 3,852 public keys, the price decade and weight tables, the constants and the paths. Any difference fails the check.
+[`parity/`](parity/) builds both libraries side by side and compares them on 18 seed records covering every kind, every structural mutation of every seed (other types, boundary numbers, edge-case strings, removed and unknown members), attestations re-signed after each claim or header mutation, attestor records re-signed after mutation, 28 forgeries (signatures with a flipped bit, signatures and attestor proofs by another key) that `pubky-app-specs` must reject and 6 re-signed controls it must accept, generated listing ids decoded against the clock, 1,582 URIs, 3,852 public keys, the price decade and weight tables, the constants and the paths. Any difference fails the check.
 
 ```sh
 cd parity && cargo run --release -- check
