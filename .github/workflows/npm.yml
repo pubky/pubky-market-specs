@@ -1,0 +1,38 @@
+name: npm package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: "wasm32-unknown-unknown"
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+      - name: Build the package
+        run: cargo run --bin bundle_specs_npm
+      - name: Run the JS tests
+        working-directory: pkg
+        run: |
+          npm install
+          npm test
+      - name: Verify the package contents
+        working-directory: pkg
+        run: npm pack --dry-run

@@ -1,0 +1,112 @@
+{
+  "seeds": [
+    {
+      "name": "attestor-annotation",
+      "kind": "attestor_annotation",
+      "owner": "7jfgaa9nutjyixzikb7tgmsf9gkwq7iqz498zr1nd5ig1fng4esy",
+      "id": "5f1a3a1c2d0e4b8f9a7c6e5d4b3a29181716151413121110f0e0d0c0b0a09080"
+    },
+    {
+      "name": "attestor-profile",
+      "kind": "attestor_profile",
+      "owner": "7jfgaa9nutjyixzikb7tgmsf9gkwq7iqz498zr1nd5ig1fng4esy",
+      "id": null
+    },
+    {
+      "name": "drop",
+      "kind": "drop",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "spring-drop-01"
+    },
+    {
+      "name": "listing-auction",
+      "kind": "listing",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "0035Y378ASAE4"
+    },
+    {
+      "name": "listing-digital-lock",
+      "kind": "listing",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "0035Y378ASBX8"
+    },
+    {
+      "name": "listing-fixed",
+      "kind": "listing",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "0035Y378AS20R"
+    },
+    {
+      "name": "order-receipt-attested-v1",
+      "kind": "order_receipt",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "a7fc7d5d-0b2a-4083-b278-47193f8fe536"
+    },
+    {
+      "name": "order-receipt-attested-v2-bitcoin",
+      "kind": "order_receipt",
+      "owner": "hnhabjbjbjjxzbcif7stmqi9p76qubombhsujfrgezkmfgqydm8o",
+      "id": "de7fa583-bbc3-415d-96c6-d6a54a185221"
+    },
+    {
+      "name": "order-receipt-attested-v2-same-currency",
+      "kind": "order_receipt",
+      "owner": "6m3819xgydzdrc1hihdj9r9k45zze5qjbzcs5mh98sp5abi9x87y",
+      "id": "e5752e58-9b32-40e8-86c3-2a80c908a955"
+    },
+    {
+      "name": "order-receipt-drop-edition",
+      "kind": "order_receipt",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "a7fc7d5d-0b2a-4083-b278-47193f8fe536"
+    },
+    {
+      "name": "order-receipt",
+      "kind": "order_receipt",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "a7fc7d5d-0b2a-4083-b278-47193f8fe536"
+    },
+    {
+      "name": "review-attested-order-scoped",
+      "kind": "review",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "BXA3CSZD0ZNZD7K8KDZW51HQG8"
+    },
+    {
+      "name": "review-attested",
+      "kind": "review",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "ZG1V4ZJ9J6H773FMM034MCMMEM"
+    },
+    {
+      "name": "review-plain",
+      "kind": "review",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "ZG1V4ZJ9J6H773FMM034MCMMEM"
+    },
+    {
+      "name": "review-response-subject",
+      "kind": "review",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": "ZG1V4ZJ9J6H773FMM034MCMMEM"
+    },
+    {
+      "name": "review-response",
+      "kind": "review_response",
+      "owner": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+      "id": "ZG1V4ZJ9J6H773FMM034MCMMEM"
+    },
+    {
+      "name": "shop",
+      "kind": "shop",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": null
+    },
+    {
+      "name": "watchlist",
+      "kind": "watchlist",
+      "owner": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+      "id": null
+    }
+  ]
+}

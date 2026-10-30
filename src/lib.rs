@@ -11,6 +11,28 @@
 //! `pubky-app-specs` (`0.6.2-marketplace.16`), which this crate replaces for
 //! commerce data. Social records (profiles, posts, tags, follows, files) are
 //! not part of this crate.
+//!
+//! ```
+//! use pubky_market_specs::{shop_uri_builder, ParsedUri, PubkyMarketObject, Resource};
+//!
+//! let owner = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo";
+//! let uri = shop_uri_builder(owner.to_string());
+//! assert_eq!(uri, format!("pubky://{owner}/pub/pubky.app/marketplace/v1/shop.json"));
+//! assert_eq!(ParsedUri::try_from(uri.as_str())?.resource, Resource::Shop);
+//!
+//! let blob = br#"{"schemaVersion":1,"recordType":"shop",
+//!   "ownerPubky":"operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo","revision":1,
+//!   "createdAt":"2025-01-01T00:00:00Z","updatedAt":"2025-01-02T00:00:00Z",
+//!   "name":" Boots & Co ","bio":"Quality hiking boots.",
+//!   "location":{"countryCode":"US","region":"Oregon"},
+//!   "shippingPolicy":"Ships within 3 business days.",
+//!   "returnPolicy":"Returns accepted within 30 days.","vacationMode":false}"#;
+//! match PubkyMarketObject::from_uri(&uri, blob)? {
+//!     PubkyMarketObject::Shop(shop) => assert_eq!(shop.name, "Boots & Co"),
+//!     other => panic!("expected a shop, got {other:?}"),
+//! }
+//! # Ok::<(), String>(())
+//! ```
 
 mod common;
 mod constants;

@@ -1,0 +1,27 @@
+{
+  "issuancePolicy": {
+    "amountBand": "both-sides consent",
+    "blindWindowDays": 14,
+    "editWindowHours": 24,
+    "minOrderValue": null,
+    "priceDecade": "always"
+  },
+  "keys": [
+    {
+      "pubky": "7jfgaa9nutjyixzikb7tgmsf9gkwq7iqz498zr1nd5ig1fng4esy",
+      "validFrom": "2026-08-01T00:00:00Z"
+    },
+    {
+      "compromisedFrom": "2026-07-15T00:00:00Z",
+      "pubky": "9wm1eqn4wddis385xdgsym7b5ge9549zpcjhmdszymicopxj6acy",
+      "validFrom": "2026-01-01T00:00:00Z",
+      "validUntil": "2026-08-01T00:00:00Z"
+    }
+  ],
+  "operator": {
+    "name": "Pubky Market",
+    "policyUrl": "https://pubky-market.example/attestor-policy",
+    "url": "https://pubky-market.example"
+  },
+  "proof": "eyJhbGciOiJFZERTQSIsInR5cCI6InB1Ymt5LWF0dGVzdG9yLXByb2ZpbGUrdjEifQ..7INeTcsmd2drWFBIerNPtAiqegS30hxyRLAHN3_Ztt0OthOrS3P4mmwqPxkXGKnNKRj1j29StKMAhcxdGf1mCA"
+}

@@ -1,0 +1,59 @@
+name: Parity with pubky-app-specs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+  PUBKY_APP_SPECS_REPO: https://github.com/BitcoinErrorLog/pubky-app-specs
+  PUBKY_APP_SPECS_REV: 5ef6e31e89530a58e66044a08fb6baf704adabc7
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: parity
+      - name: Compare both crates and check the vectors file
+        working-directory: parity
+        run: cargo run --release --locked -- check
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            parity -> target
+          cache-targets: "wasm32-unknown-unknown"
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+      - name: Build the pubky-app-specs package at the pinned rev
+        run: |
+          git init "$RUNNER_TEMP/pubky-app-specs"
+          cd "$RUNNER_TEMP/pubky-app-specs"
+          git fetch --depth 1 "$PUBKY_APP_SPECS_REPO" "$PUBKY_APP_SPECS_REV"
+          git checkout --detach FETCH_HEAD
+          cargo run --bin bundle_specs_npm
+      - name: Build this package
+        run: cargo run --bin bundle_specs_npm
+      - name: Write the record corpus
+        working-directory: parity
+        run: cargo run --release --locked -- corpus "$RUNNER_TEMP/corpus.json"
+      - name: Compare both packages
+        run: node parity/js/parity.mjs "$RUNNER_TEMP/pubky-app-specs/pkg" pkg "$RUNNER_TEMP/corpus.json"

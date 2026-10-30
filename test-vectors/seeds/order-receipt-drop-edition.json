@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "recordType": "order_receipt",
+  "ownerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "revision": 1,
+  "createdAt": "2026-01-02T03:04:05Z",
+  "updatedAt": "2026-01-02T03:04:05Z",
+  "role": "buyer",
+  "receiptId": "a7fc7d5d-0b2a-4083-b278-47193f8fe536",
+  "orderId": "0e9c2c4a-91d6-4a4e-8db3-2f14c1e8b7aa",
+  "buyerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "sellerPubky": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+  "total": {
+    "amountMinor": 12000,
+    "currency": "USD",
+    "exponent": 2
+  },
+  "paidAt": "2026-01-02T03:04:05Z",
+  "receiptAttestation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "editionAttestation": "eyJhbGciOiJFZERTQSIsInR5cCI6InB1Ymt5LWRyb3AtZWRpdGlvbit2MSJ9.eyJ2IjoxLCJpc3MiOiI3amZnYWE5bnV0anlpeHppa2I3dGdtc2Y5Z2t3cTdpcXo0OTh6cjFuZDVpZzFmbmc0ZXN5IiwiYnV5ZXIiOiJvcGVycnI4d3NicHIzdWU5ZDRxajQxZ2Uxa2NjNnI3ZmRpeTZvM3VnanJyaGk0eTc3cmRvIiwic2VsbGVyIjoicHhudTMzeDdqdHB4OWFyMXl0c2k0eXhicDZhNW8zNmd3aGZmczh6b3htYnVwdGljaTFqeSIsImRyb3AiOiJzcHJpbmctZHJvcC0wMSIsImVkaXRpb24iOjcsIm9mIjo1MDAsInJlY2VpcHQiOiJhN2ZjN2Q1ZC0wYjJhLTQwODMtYjI3OC00NzE5M2Y4ZmU1MzYiLCJpYXQiOjE3NjczMjMwNDV9.7uCVGxWrirNZaFWkZIKv0ek_2TibBfKKvSyacqrDX936Oq76F6mWbPw6mmItPJoU73amdA2ZByWtx4JUtoyjCg",
+  "drop": {
+    "dropId": "spring-drop-01",
+    "edition": 7,
+    "of": 500
+  }
+}

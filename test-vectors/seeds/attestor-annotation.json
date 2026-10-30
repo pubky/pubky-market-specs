@@ -1,0 +1,15 @@
+{
+  "orderRef": "5f1a3a1c2d0e4b8f9a7c6e5d4b3a29181716151413121110f0e0d0c0b0a09080",
+  "outcomes": [
+    {
+      "kind": "returned",
+      "on": "2026-10-12"
+    },
+    {
+      "kind": "refunded",
+      "on": "2026-10-14"
+    }
+  ],
+  "proof": "eyJhbGciOiJFZERTQSIsInR5cCI6InB1Ymt5LWF0dGVzdG9yLWFubm90YXRpb24rdjEifQ..JX8ewq5sBaVB9PAIe8s6c1rZUor1MUgxcH5Q88HJ2iOzOFc3lZSMgTz9xzr9BtK5GnAJ6OiLfgR_EDUmuPreAA",
+  "revision": 2
+}

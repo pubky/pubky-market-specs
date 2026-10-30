@@ -35,9 +35,6 @@ wasm-bindgen = "0.2.100"
 serde-wasm-bindgen = "0.6.5"
 js-sys = "0.3.77"
 
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen-test = "0.3.68"
-
 [features]
 openapi = ["utoipa"]
 

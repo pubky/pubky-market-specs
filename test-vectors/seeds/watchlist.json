@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "recordType": "watchlist",
+  "ownerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "revision": 1,
+  "createdAt": "2025-01-01T00:00:00Z",
+  "updatedAt": "2025-01-02T00:00:00Z",
+  "items": [
+    {
+      "listingOwnerPubky": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+      "listingId": "0032SSN7Q4EVG",
+      "watchedAtMs": 1735689600000
+    }
+  ],
+  "tombstones": [
+    {
+      "listingOwnerPubky": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+      "listingId": "0032SSN7Q4EVH",
+      "removedAtMs": 1735776000000
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "recordType": "drop",
+  "ownerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "revision": 1,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-02T00:00:00Z",
+  "dropId": "spring-drop-01",
+  "title": "Spring boot drop",
+  "description": "Limited spring release.",
+  "media": [
+    "pubky://operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo/pub/pubky.app/marketplace/v1/media/drop_banner"
+  ],
+  "format": "fcfs",
+  "startsAt": "2026-02-01T00:00:00Z",
+  "endsAt": "2026-02-02T00:00:00Z",
+  "listingIds": [
+    "listing_01",
+    "listing_02"
+  ],
+  "totalQuantity": 500,
+  "perBuyerLimit": 2,
+  "stockDisplay": "bands"
+}

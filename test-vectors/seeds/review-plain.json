@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "recordType": "review",
+  "ownerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "revision": 1,
+  "createdAt": "2025-01-01T00:00:00Z",
+  "updatedAt": "2025-01-01T00:00:00Z",
+  "reviewId": "ZG1V4ZJ9J6H773FMM034MCMMEM",
+  "subjectPubky": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+  "listingOwnerPubky": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+  "listingId": "0032SSN7Q4EVG",
+  "role": "buyer_reviewing_seller",
+  "ratings": {
+    "overall": 5,
+    "itemAccuracy": 5,
+    "shipping": 4
+  },
+  "text": "Great seller, fast shipping.",
+  "eligibilityAttestation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

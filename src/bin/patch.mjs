@@ -80,10 +80,7 @@ const wasmModule = new WebAssembly.Module(bytes);
 `,
   );
 
-await writeFile(
-  path.join(__dirname, `../../pkg/index.js`),
-  patched + "\nglobalThis['pubky'] = imports\n",
-);
+await writeFile(path.join(__dirname, `../../pkg/index.js`), patched + "\n");
 
 // Move CJS output outside of nodejs/
 await Promise.all(
