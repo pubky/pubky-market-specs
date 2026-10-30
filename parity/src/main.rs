@@ -63,6 +63,13 @@ const FORK_TAG: &str = "v0.6.2-marketplace.16";
 const FORK_REV: &str = "5ef6e31e89530a58e66044a08fb6baf704adabc7";
 /// The key the seed attestations are signed with (test-only).
 const TEST_ATTESTOR_SECRET: [u8; 32] = [7u8; 32];
+/// A second test-only key: a valid signature by it is a forgery.
+const OTHER_SECRET: [u8; 32] = [9u8; 32];
+const JWS_FIELDS: [&str; 3] = [
+    "eligibilityAttestation",
+    "receiptAttestation",
+    "editionAttestation",
+];
 const VECTORS_FILE: &str = "test-vectors/market-records-v1.json";
 /// One in this many mutation cases of each seed goes into the vectors file;
 /// `check` compares all of them live.
@@ -119,6 +126,9 @@ struct Case {
     owner: String,
     id: Option<String>,
     blob: Vec<u8>,
+    /// For a forgery: the observation that must be `err` in both crates
+    /// while it is `ok` for the seed.
+    forged: Option<&'static str>,
 }
 
 fn base64url_decode(input: &str) -> Option<Vec<u8>> {
@@ -225,22 +235,112 @@ fn resign_attestor(kind: Kind, record: &Value, secret: &[u8; 32]) -> Vec<u8> {
     signed.unwrap_or(blob)
 }
 
+/// The observation that carries the signature check of a JWS field.
+fn signature_observation(field: &str) -> &'static str {
+    match field {
+        "editionAttestation" => "edition verified",
+        _ => "verified",
+    }
+}
+
+/// Records whose only defect is a bad signature or proof: the claims and
+/// bindings are those of the valid seed. Each comes with the observation
+/// that must reject it.
+fn forgeries(seed: &Seed) -> Vec<(String, Value, &'static str)> {
+    let other = SigningKey::from_bytes(&OTHER_SECRET);
+    let mut out = Vec::new();
+    for field in JWS_FIELDS {
+        let Some(jws) = seed.record.get(field).and_then(Value::as_str) else {
+            continue;
+        };
+        let parts: Vec<&str> = jws.split('.').collect();
+        if parts.len() != 3 {
+            continue;
+        }
+        let Some(mut signature) = base64url_decode(parts[2]) else {
+            continue;
+        };
+        for (byte, bit) in [(0, 0x01), (31, 0x80), (63, 0x40)] {
+            if let Some(b) = signature.get_mut(byte) {
+                *b ^= bit;
+                let mut record = seed.record.clone();
+                record[field] = json!(format!(
+                    "{}.{}.{}",
+                    parts[0],
+                    parts[1],
+                    ours::base64url_encode(&signature)
+                ));
+                out.push((
+                    format!("forged: {field} signature byte {byte} bit flipped"),
+                    record,
+                    signature_observation(field),
+                ));
+                let b = signature.get_mut(byte).unwrap();
+                *b ^= bit;
+            }
+        }
+    }
+    for (field, header, claims) in test_signed_jws(seed) {
+        let mut record = seed.record.clone();
+        record[field] = json!(sign_compact(&header, &claims, &other));
+        out.push((
+            format!("forged: {field} signed by another key"),
+            record,
+            signature_observation(field),
+        ));
+    }
+    if matches!(seed.kind, Kind::AttestorProfile | Kind::AttestorAnnotation) {
+        let resigned = resign_attestor(seed.kind, &seed.record, &OTHER_SECRET);
+        let record: Value = serde_json::from_slice(&resigned).unwrap();
+        assert_ne!(
+            record["proof"], seed.record["proof"],
+            "re-signing changes the proof"
+        );
+        out.push((
+            "forged: proof by another key".to_string(),
+            record,
+            "validated",
+        ));
+        let mut flipped = seed.record.clone();
+        let proof = flipped["proof"].as_str().unwrap_or_default().to_string();
+        if let Some((head, signature)) = proof.rsplit_once('.') {
+            if let Some(mut bytes) = base64url_decode(signature) {
+                if let Some(b) = bytes.first_mut() {
+                    *b ^= 0x01;
+                    flipped["proof"] = json!(format!("{head}.{}", ours::base64url_encode(&bytes)));
+                    out.push((
+                        "forged: proof signature bit flipped".to_string(),
+                        flipped,
+                        "validated",
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
 fn build_cases(seeds: &[Seed]) -> Vec<Case> {
     let secret = attestor_secret();
     let key = SigningKey::from_bytes(&TEST_ATTESTOR_SECRET);
     let mut cases = Vec::new();
     for seed in seeds {
         let attestor = matches!(seed.kind, Kind::AttestorProfile | Kind::AttestorAnnotation);
+        let push_case =
+            |cases: &mut Vec<Case>, label: String, blob: Vec<u8>, forged: Option<&'static str>| {
+                cases.push(Case {
+                    seed: seed.name.clone(),
+                    label,
+                    kind_name: seed.kind_name.clone(),
+                    kind: seed.kind,
+                    owner: seed.owner.clone(),
+                    id: seed.id.clone(),
+                    blob,
+                    forged,
+                })
+            };
         let push = |cases: &mut Vec<Case>, label: String, blob: Vec<u8>| {
-            cases.push(Case {
-                seed: seed.name.clone(),
-                label,
-                kind_name: seed.kind_name.clone(),
-                kind: seed.kind,
-                owner: seed.owner.clone(),
-                id: seed.id.clone(),
-                blob,
-            })
+            push_case(cases, label, blob, None)
         };
         push(
             &mut cases,
@@ -274,6 +374,14 @@ fn build_cases(seeds: &[Seed]) -> Vec<Case> {
                     serde_json::to_vec(&record).unwrap(),
                 );
             }
+        }
+        for (label, record, observation) in forgeries(seed) {
+            push_case(
+                &mut cases,
+                label,
+                serde_json::to_vec(&record).unwrap(),
+                Some(observation),
+            );
         }
     }
     cases
@@ -311,6 +419,21 @@ fn check_records(cases: &[Case], report: &mut Report) {
     let mut accepted = 0;
     let mut verified = 0;
     let mut failures = 0;
+    let mut forged = 0;
+    let observed = |case: &Case| {
+        let uri = case_uri(case);
+        fork_side::observe(
+            case.kind,
+            &uri,
+            case.id.as_deref().unwrap_or(""),
+            &case.blob,
+        )
+    };
+    let seed_observations: std::collections::HashMap<&str, Vec<(&'static str, String)>> = cases
+        .iter()
+        .filter(|case| case.label == "seed")
+        .map(|case| (case.seed.as_str(), observed(case)))
+        .collect();
     for case in cases {
         let uri = case_uri(case);
         let ours_uri = record_uri!(
@@ -337,6 +460,23 @@ fn check_records(cases: &[Case], report: &mut Report) {
             .filter(|(k, v)| k.ends_with("verified") && v.starts_with("ok:"))
             .count();
         observations += fork.len();
+        if let Some(key) = case.forged {
+            forged += 1;
+            let value = |obs: &[(&'static str, String)]| {
+                obs.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
+            };
+            let seed_value = value(&seed_observations[case.seed.as_str()]);
+            let forged_value = value(&fork);
+            if !seed_value.as_deref().is_some_and(|v| v.starts_with("ok:"))
+                || forged_value.as_deref() != Some("err")
+            {
+                failures += 1;
+                report.mismatch(format!(
+                    "{} {}: harness: pubky-app-specs must accept the seed and reject this forgery on `{key}` (seed {seed_value:?}, forgery {forged_value:?})",
+                    case.seed, case.label
+                ));
+            }
+        }
         if fork != ours {
             failures += 1;
             let detail = fork
@@ -352,7 +492,7 @@ fn check_records(cases: &[Case], report: &mut Report) {
         "records",
         cases.len(),
         &format!(
-            " ({accepted} accepted by pubky-app-specs, {verified} attestations verified, {observations} observations, {failures} differ)"
+            " ({accepted} accepted by pubky-app-specs, {verified} attestations verified, {forged} forgeries rejected, {observations} observations, {failures} differ)"
         ),
     );
 }
@@ -672,6 +812,55 @@ fn check_price(report: &mut Report) -> Vec<Value> {
     vectors
 }
 
+/// Listing ids are microsecond timestamps taken when the record is built:
+/// both crates must encode the current time, in the same format.
+fn check_listing_ids(seeds: &[Seed], report: &mut Report) {
+    use fork::traits::TimestampId as ForkTimestampId;
+    use ours::traits::TimestampId as OursTimestampId;
+    let now = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as i64
+    };
+    let decode = |id: &str| ours::validate_crockford_id(id).map(i64::from_be_bytes);
+    let mut compared = 0;
+    for seed in seeds.iter().filter(|s| s.kind == Kind::Listing) {
+        let fork_listing: fork::PubkyAppListing =
+            serde_json::from_value(seed.record.clone()).unwrap();
+        let ours_listing: ours::PubkyMarketListing =
+            serde_json::from_value(seed.record.clone()).unwrap();
+        for _ in 0..100 {
+            compared += 1;
+            let before = now();
+            let fork_id = fork_listing.create_id();
+            let ours_id = ours_listing.create_id();
+            let after = now();
+            let (Ok(fork_micros), Ok(ours_micros)) = (decode(&fork_id), decode(&ours_id)) else {
+                report.mismatch(format!(
+                    "listing id: undecodable fork {fork_id} | ours {ours_id}"
+                ));
+                continue;
+            };
+            let fork_decoded_by_fork =
+                fork::validate_crockford_id(&fork_id).map(i64::from_be_bytes);
+            let in_window = |micros: i64| (before..=after).contains(&micros);
+            if !in_window(fork_micros)
+                || !in_window(ours_micros)
+                || fork_decoded_by_fork != Ok(fork_micros)
+                || ours_id.len() != fork_id.len()
+                || ForkTimestampId::validate_id(&fork_listing, &ours_id).is_err()
+                || OursTimestampId::validate_id(&ours_listing, &fork_id).is_err()
+            {
+                report.mismatch(format!(
+                    "listing id: window {before}..{after}, fork {fork_id} ({fork_micros}), ours {ours_id} ({ours_micros})"
+                ));
+            }
+        }
+    }
+    report.section("generated listing ids", compared, "");
+}
+
 fn check_constants(report: &mut Report) {
     use fork::traits::{HasIdPath as ForkIdPath, HasPath as ForkPath};
     use ours::traits::{HasIdPath as OursIdPath, HasPath as OursPath};
@@ -860,7 +1049,7 @@ fn vectors_document(
     for seed in seeds {
         let seed_cases: Vec<&Case> = cases.iter().filter(|c| c.seed == seed.name).collect();
         for (index, case) in seed_cases.iter().enumerate() {
-            if index != 0 && index % VECTOR_SAMPLE_EVERY != 0 {
+            if index != 0 && index % VECTOR_SAMPLE_EVERY != 0 && case.forged.is_none() {
                 continue;
             }
             let uri = case_uri(case);
@@ -881,6 +1070,7 @@ fn vectors_document(
                 "id": case.id,
                 "uri": uri,
                 "input": String::from_utf8(case.blob.clone()).unwrap(),
+                "forgedObservation": case.forged,
                 "expected": expected,
             }));
         }
@@ -910,10 +1100,11 @@ fn corpus(cases: &[Case]) -> String {
                 "id": case.id,
                 "uri": case_uri(case),
                 "input": String::from_utf8(case.blob.clone()).unwrap(),
+                "forgedObservation": case.forged,
             })
         })
         .collect();
-    serde_json::to_string(&json!({ "cases": items })).unwrap()
+    serde_json::to_string(&json!({ "cases": items, "uris": uri_cases() })).unwrap()
 }
 
 fn main() {
@@ -934,6 +1125,7 @@ fn main() {
             let uris = check_uris(&mut report);
             let ids = check_pubky_ids(&mut report);
             let price = check_price(&mut report);
+            check_listing_ids(&seeds, &mut report);
             check_constants(&mut report);
             let document = vectors_document(&seeds, &cases, uris, ids, price);
             let path = repo_root().join(VECTORS_FILE);

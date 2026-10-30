@@ -61,7 +61,7 @@ const listingUri = buildMarketUri(sellerPubky, "listing", listingId);
 const claims = verifyPurchaseAttestation(reviewJson);
 ```
 
-Every `build*` function takes the owner's pubky and the record as a camelCase object, sanitizes and validates it, derives its ID where it has one, and returns `{ <record>, meta }` with `meta.id`, `meta.path` and `meta.url`. The record fields are `shop`, `listing`, `drop`, `review`, `review_response`, `watchlist` and `order_receipt`. `buildMarketUri(owner, kind, id?)` covers every kind in the table above (`shop`, `listing`, `drop`, `review`, `review_response`, `watchlist`, `order_receipt`, `attestor_profile`, `attestor_annotation`). The package also exports `parsePurchaseAttestation`, `verifyPurchaseAttestation`, `itemCountKey`, `sellerRatingKey`, `priceDecade`, `priceWeight`, `parseOrderReceiptAttestation`, `verifyOrderReceiptAttestation`, `parseDropEditionAttestation`, `verifyDropEditionAttestation`, `verifyAttestorProfile` and `verifyAttestorAnnotation`.
+Every `build*` function takes the owner's pubky and the record as a camelCase object, sanitizes and validates it, derives its ID where it has one, and returns `{ <record>, meta }` with `meta.id`, `meta.path` and `meta.url`. The record fields are `shop`, `listing`, `drop`, `review`, `review_response`, `watchlist` and `order_receipt`. `buildMarketUri(owner, kind, id?)` covers every kind in the table above (`shop`, `listing`, `drop`, `review`, `review_response`, `watchlist`, `order_receipt`, `attestor_profile`, `attestor_annotation`) and concatenates exactly as the per-kind builders of `pubky-app-specs` do: singletons ignore `id`, the other kinds require one, and neither the owner nor the id is validated. `parseMarketUri(uri)` returns `{ user_id, resource, resource_id }` as `parse_uri` does for Market records, and `unknown` for any other `pubky.app` path. The package also exports `parsePurchaseAttestation`, `verifyPurchaseAttestation`, `itemCountKey`, `sellerRatingKey`, `priceDecade`, `priceWeight`, `parseOrderReceiptAttestation`, `verifyOrderReceiptAttestation`, `parseDropEditionAttestation`, `verifyDropEditionAttestation`, `verifyAttestorProfile` and `verifyAttestorAnnotation`.
 
 ## Names in pubky-app-specs
 
@@ -74,16 +74,17 @@ Every `build*` function takes the owner's pubky and the record as a camelCase ob
 | `new PubkySpecsBuilder(owner).createShop(json)` and the other `create*` methods | `buildShop(owner, json)`, `buildListing`, `buildReview` (was `createMarketplaceReview`), `buildReviewResponse`, `buildWatchlist`, `buildOrderReceipt` (was `createMarketplaceOrderReceipt`), `buildDrop` (was `createMarketplaceDrop`) |
 | result fields `marketplace_review`, `marketplace_drop` | `review`, `drop` |
 | `listingUriBuilder(owner, id)` and the other per-kind JS URI builders | `buildMarketUri(owner, "listing", id)` |
+| `parse_uri(uri)` | `parseMarketUri(uri)` (Market records only) |
 
 ## Parity with pubky-app-specs
 
-[`parity/`](parity/) builds both libraries side by side and compares them on 18 seed records covering every kind, every structural mutation of every seed (other types, boundary numbers, edge-case strings, removed and unknown members), attestations re-signed after each claim or header mutation, attestor records re-signed after mutation, 1,582 URIs, 3,852 public keys, the price decade and weight tables, the constants and the paths. Any difference fails the check.
+[`parity/`](parity/) builds both libraries side by side and compares them on 18 seed records covering every kind, every structural mutation of every seed (other types, boundary numbers, edge-case strings, removed and unknown members), attestations re-signed after each claim or header mutation, attestor records re-signed after mutation, 22 forgeries (signatures with a flipped bit, signatures and attestor proofs by another key) that `pubky-app-specs` must reject, generated listing ids decoded against the clock, 1,582 URIs, 3,852 public keys, the price decade and weight tables, the constants and the paths. Any difference fails the check.
 
 ```sh
 cd parity && cargo run --release -- check
 ```
 
-It also writes [`test-vectors/market-records-v1.json`](test-vectors/market-records-v1.json): the seeds and a sample of the mutations with the exact outcome `pubky-app-specs` produced for each. `cargo test` replays the vectors against this crate alone, and the npm tests replay the seeds through the WebAssembly package. [`parity/js/parity.mjs`](parity/js/parity.mjs) compares the two npm packages call by call over the whole mutation corpus.
+It also writes [`test-vectors/market-records-v1.json`](test-vectors/market-records-v1.json): the seeds and a sample of the mutations with the exact outcome `pubky-app-specs` produced for each. `cargo test` replays the vectors against this crate alone, and the npm tests replay the seeds through the WebAssembly package. [`parity/js/parity.mjs`](parity/js/parity.mjs) compares the two npm packages call by call over the whole mutation corpus, the forgeries, the URI builders and parser, and the generated listing ids.
 
 ## Building and testing
 

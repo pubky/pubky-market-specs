@@ -71,6 +71,33 @@ fn record_vectors_match_pubky_app_specs() {
 }
 
 #[test]
+fn forged_signatures_are_rejected() {
+    let document = vectors();
+    let mut forged = 0;
+    for vector in document["records"].as_array().unwrap() {
+        let Some(key) = vector["forgedObservation"].as_str() else {
+            continue;
+        };
+        forged += 1;
+        let kind = Kind::parse(vector["kind"].as_str().unwrap());
+        let observed = ours_side::observe(
+            kind,
+            vector["uri"].as_str().unwrap(),
+            vector["id"].as_str().unwrap_or(""),
+            vector["input"].as_str().unwrap().as_bytes(),
+        );
+        let value = observed.iter().find(|(k, _)| *k == key).map(|(_, v)| v);
+        assert_eq!(
+            value.map(String::as_str),
+            Some("err"),
+            "{}: {key}",
+            vector["case"]
+        );
+    }
+    assert_eq!(forged, 22, "every forgery is in the vectors file");
+}
+
+#[test]
 fn uri_vectors_match_pubky_app_specs() {
     for vector in vectors()["uris"].as_array().unwrap() {
         let uri = vector["uri"].as_str().unwrap();

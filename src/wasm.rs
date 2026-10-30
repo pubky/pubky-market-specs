@@ -211,32 +211,30 @@ pub fn build_drop(owner_pubky: &str, drop: JsValue) -> Result<DropResult, String
     Ok(DropResult { drop, meta })
 }
 
-/// Builds the `pubky://` URI of a Market record.
+/// Builds the `pubky://` URI of a Market record exactly as the per-kind
+/// builders of `pubky-app-specs` do: the owner and id are concatenated
+/// without validation, an empty id builds the collection path, and a missing
+/// id is an error.
 ///
 /// `kind` is one of `shop`, `listing`, `drop`, `review`, `review_response`,
 /// `watchlist`, `order_receipt`, `attestor_profile`, `attestor_annotation`.
-/// Singletons (`shop`, `watchlist`, `attestor_profile`) take no `id`; every
-/// other kind requires one (the listing, drop, review or receipt id, or the
-/// annotation's order reference). The owner must be a valid pubky.
+/// Singletons (`shop`, `watchlist`, `attestor_profile`) ignore `id`; every
+/// other kind takes the listing, drop, review or receipt id, or the
+/// annotation's order reference.
 #[wasm_bindgen(js_name = buildMarketUri)]
 pub fn build_market_uri(
-    owner_pubky: &str,
+    owner_pubky: String,
     kind: &str,
     id: Option<String>,
 ) -> Result<String, String> {
-    let owner = owner(owner_pubky)?.to_string();
-    let singleton = |build: fn(String) -> String| match &id {
-        None => Ok(build(owner.clone())),
-        Some(_) => Err(format!("Validation Error: {kind} URIs take no id")),
-    };
     let with_id = |build: fn(String, String) -> String| match &id {
-        Some(id) if !id.is_empty() => Ok(build(owner.clone(), id.clone())),
-        _ => Err(format!("Validation Error: {kind} URIs require an id")),
+        Some(id) => Ok(build(owner_pubky.clone(), id.clone())),
+        None => Err(format!("Validation Error: {kind} URIs require an id")),
     };
     match kind {
-        "shop" => singleton(shop_uri_builder),
-        "watchlist" => singleton(watchlist_uri_builder),
-        "attestor_profile" => singleton(attestor_profile_uri_builder),
+        "shop" => Ok(shop_uri_builder(owner_pubky.clone())),
+        "watchlist" => Ok(watchlist_uri_builder(owner_pubky.clone())),
+        "attestor_profile" => Ok(attestor_profile_uri_builder(owner_pubky.clone())),
         "listing" => with_id(listing_uri_builder),
         "drop" => with_id(drop_uri_builder),
         "review" => with_id(marketplace_review_uri_builder),
@@ -247,6 +245,47 @@ pub fn build_market_uri(
             "Validation Error: unknown Market URI kind '{other}'"
         )),
     }
+}
+
+/// The result of parsing a Market URI: the owner, the resource name (the
+/// `Display` form of [`Resource`], e.g. `marketplace/v1/listings`) and the
+/// resource id when it has one.
+#[wasm_bindgen]
+pub struct ParsedUriResult {
+    user_id: String,
+    resource: String,
+    resource_id: Option<String>,
+}
+
+#[wasm_bindgen]
+impl ParsedUriResult {
+    #[wasm_bindgen(getter)]
+    pub fn user_id(&self) -> String {
+        self.user_id.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn resource(&self) -> String {
+        self.resource.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn resource_id(&self) -> Option<String> {
+        self.resource_id.clone()
+    }
+}
+
+/// Parses a `pubky://<owner>/pub/pubky.app/...` URI. A Market record gives
+/// the same result as `parse_uri` in `pubky-app-specs`; any other `pubky.app`
+/// path gives the resource `unknown`.
+#[wasm_bindgen(js_name = parseMarketUri)]
+pub fn parse_market_uri(uri: &str) -> Result<ParsedUriResult, String> {
+    let parsed = ParsedUri::try_from(uri)?;
+    Ok(ParsedUriResult {
+        user_id: parsed.user_id.to_string(),
+        resource: parsed.resource.to_string(),
+        resource_id: parsed.resource.id(),
+    })
 }
 
 /// Parses and structurally validates a compact JWS purchase attestation,

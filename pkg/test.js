@@ -14,6 +14,7 @@ import {
   buildOrderReceipt,
   buildDrop,
   buildMarketUri,
+  parseMarketUri,
   parseOrderReceiptAttestation,
   verifyOrderReceiptAttestation,
   parseDropEditionAttestation,
@@ -734,6 +735,12 @@ describe("pubky-market-specs", () => {
       body.listingId = "";
       const { listing, meta } = buildListing(owner, body);
       assert.strictEqual(meta.id.length, 13, "Listing ids are 13-character timestamp ids");
+      const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+      let bits = 0n;
+      for (const c of meta.id) bits = (bits << 5n) | BigInt(CROCKFORD.indexOf(c));
+      const micros = bits >> 1n;
+      const now = BigInt(Date.now()) * 1000n;
+      assert.ok(micros <= now + 1000n && micros > now - 60_000_000n, "The id encodes the build time");
       assert.strictEqual(listing.toJson().listingId, meta.id);
       assert.strictEqual(meta.path, `/pub/pubky.app/marketplace/v1/listings/${meta.id}`);
       assert.strictEqual(meta.url, buildMarketUri(owner, "listing", meta.id));
@@ -777,12 +784,39 @@ describe("pubky-market-specs", () => {
       });
     }
 
-    it("should refuse an id on singletons, a missing id elsewhere, unknown kinds and invalid owners", () => {
-      assert.throws(() => buildMarketUri(OTTO, "shop", "x"), /take no id/);
+    it("should concatenate like the pubky-app-specs builders", () => {
+      assert.strictEqual(buildMarketUri(OTTO, "shop", "ignored"), `${base}/shop.json`);
+      assert.strictEqual(buildMarketUri(OTTO, "listing", ""), `${base}/listings/`);
+      assert.strictEqual(
+        buildMarketUri("not-a-pubky", "listing", ID),
+        `pubky://not-a-pubky/pub/pubky.app/marketplace/v1/listings/${ID}`
+      );
       assert.throws(() => buildMarketUri(OTTO, "listing"), /require an id/);
-      assert.throws(() => buildMarketUri(OTTO, "listing", ""), /require an id/);
       assert.throws(() => buildMarketUri(OTTO, "posts", ID), /unknown Market URI kind/);
-      assert.throws(() => buildMarketUri("not-a-pubky", "shop"), /52 utf chars/);
+    });
+  });
+
+  describe("parseMarketUri", () => {
+    it("should parse every Market resource and nothing else", () => {
+      const ID = "0032SSN7Q4EVG";
+      const cases = [
+        [buildMarketUri(OTTO, "shop"), "marketplace/v1/shop.json", undefined],
+        [buildMarketUri(OTTO, "listing", ID), "marketplace/v1/listings", ID],
+        [buildMarketUri(OTTO, "drop", "d-1"), "marketplace/v1/drops", "d-1"],
+        [buildMarketUri(OTTO, "review", ID), "marketplace/v1/reviews", ID],
+        [buildMarketUri(OTTO, "review_response", ID), "marketplace/v1/review_responses", ID],
+        [buildMarketUri(OTTO, "attestor_profile"), "marketplace/v1/attestor/profile", undefined],
+        [buildMarketUri(OTTO, "attestor_annotation", "ref-1"), "marketplace/v1/attestor/annotations", "ref-1"],
+        [`pubky://${OTTO}/pub/pubky.app/posts/${ID}`, "unknown", undefined],
+      ];
+      for (const [uri, resource, id] of cases) {
+        const parsed = parseMarketUri(uri);
+        assert.strictEqual(parsed.user_id, OTTO, uri);
+        assert.strictEqual(parsed.resource, resource, uri);
+        assert.strictEqual(parsed.resource_id, id, uri);
+      }
+      assert.throws(() => parseMarketUri(`pubky://${OTTO}/pub/other.app/marketplace/v1/shop.json`));
+      assert.throws(() => parseMarketUri("not a url"));
     });
   });
 
@@ -830,6 +864,25 @@ describe("pubky-market-specs", () => {
         }
       });
     }
+
+    it("should reject every forged signature and proof", () => {
+      const verifiers = {
+        verified: { review: verifyPurchaseAttestation, order_receipt: verifyOrderReceiptAttestation },
+        "edition verified": { order_receipt: verifyDropEditionAttestation },
+      };
+      const forged = vectors.records.filter((v) => v.forgedObservation);
+      assert.strictEqual(forged.length, 22);
+      for (const vector of forged) {
+        if (vector.kind === "attestor_profile") {
+          assert.throws(() => verifyAttestorProfile(vector.uri, vector.input), vector.case);
+        } else if (vector.kind === "attestor_annotation") {
+          assert.throws(() => verifyAttestorAnnotation(vector.uri, vector.input), vector.case);
+        } else {
+          const verify = verifiers[vector.forgedObservation][vector.kind];
+          assert.throws(() => verify(JSON.parse(vector.input)), vector.case);
+        }
+      }
+    });
 
     it("should match every price decade and weight vector", () => {
       for (const vector of vectors.price) {

@@ -16,7 +16,7 @@ if (!forkDir || !oursDir || !corpusPath) {
 const load = (dir) => import(pathToFileURL(path.resolve(dir, "index.js")).href);
 const fork = await load(forkDir);
 const ours = await load(oursDir);
-const { cases } = JSON.parse(readFileSync(corpusPath, "utf8"));
+const { cases, uris } = JSON.parse(readFileSync(corpusPath, "utf8"));
 
 // A lossless description of a value as the JS caller sees it: `Map`s,
 // `undefined`, BigInts and key order all show up, so two values describe the
@@ -43,9 +43,40 @@ const record = (result, field) => {
   return { json, meta: { id: meta.id, path: meta.path, url: meta.url } };
 };
 
-const withoutListingId = (built) => {
+const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+// A listing id is the 8-byte big-endian microsecond timestamp in Crockford
+// Base32 (13 characters, the last carrying one bit of data).
+const decodeTimestampId = (id) => {
+  let bits = 0n;
+  for (const c of id) {
+    const v = CROCKFORD.indexOf(c);
+    if (v < 0) return null;
+    bits = (bits << 5n) | BigInt(v);
+  }
+  return id.length === 13 ? bits >> 1n : null;
+};
+
+// The generated id is replaced by whether it encodes the build time, so the
+// comparison covers the derivation without depending on the clock.
+const withoutListingId = (built, before, after) => {
   const { json, meta } = built;
-  return { json: { ...json, listingId: "<generated>" }, meta: { id: "<generated>", path: "<generated>", url: "<generated>" }, idLength: meta.id.length, pathMatches: meta.path.endsWith(`/listings/${meta.id}`) && json.listingId === meta.id };
+  const micros = decodeTimestampId(meta.id);
+  return {
+    json: { ...json, listingId: "<generated>" },
+    meta: { id: "<generated>", path: "<generated>", url: "<generated>" },
+    encodesBuildTime: micros !== null && micros >= before && micros <= after,
+    pathMatches:
+      meta.path === `/pub/pubky.app/marketplace/v1/listings/${meta.id}` &&
+      meta.url.endsWith(meta.path) &&
+      json.listingId === meta.id,
+  };
+};
+const nowMicros = () => BigInt(Date.now()) * 1000n;
+const timed = (build) => {
+  const before = nowMicros();
+  const built = build();
+  const after = nowMicros() + 1000n;
+  return withoutListingId(built, before, after);
 };
 
 const classes = {
@@ -61,8 +92,8 @@ const classes = {
 const builders = {
   shop: [(b, i) => record(b.createShop(i), "shop"), (o, i) => record(ours.buildShop(o, i), "shop")],
   listing: [
-    (b, i) => withoutListingId(record(b.createListing(i), "listing")),
-    (o, i) => withoutListingId(record(ours.buildListing(o, i), "listing")),
+    (b, i) => timed(() => record(b.createListing(i), "listing")),
+    (o, i) => timed(() => record(ours.buildListing(o, i), "listing")),
   ],
   drop: [(b, i) => record(b.createMarketplaceDrop(i), "marketplace_drop"), (o, i) => record(ours.buildDrop(o, i), "drop")],
   review: [
@@ -80,8 +111,15 @@ const builders = {
   ],
 };
 
+const forgeryCheck = {
+  review: { verified: "verifyPurchaseAttestation" },
+  order_receipt: { verified: "verifyOrderReceiptAttestation", "edition verified": "verifyDropEditionAttestation" },
+};
+
 let compared = 0;
 let accepted = 0;
+let forgeries = 0;
+const verdicts = (...outcomes) => outcomes.map((o) => (o === "err" ? "err" : "accepted")).join(" ");
 const differences = [];
 const compare = (label, a, b) => {
   compared += 1;
@@ -101,8 +139,13 @@ for (const item of cases) {
   if (item.kind === "attestor_profile" || item.kind === "attestor_annotation") {
     const fn = item.kind === "attestor_profile" ? "verifyAttestorProfile" : "verifyAttestorAnnotation";
     const a = attempt(() => fork[fn](item.uri, item.input));
-    compare(`${label}: ${fn}`, a, attempt(() => ours[fn](item.uri, item.input)));
+    const b = attempt(() => ours[fn](item.uri, item.input));
+    compare(`${label}: ${fn}`, a, b);
     if (a.startsWith("ok:")) accepted += 1;
+    if (item.forgedObservation) {
+      forgeries += 1;
+      compare(`${label}: forgery rejected`, "err err", verdicts(a, b));
+    }
     continue;
   }
 
@@ -117,6 +160,13 @@ for (const item of cases) {
     attempt(() => forkBuild(new fork.PubkySpecsBuilder(item.owner), input)),
     attempt(() => oursBuild(item.owner, input))
   );
+
+  if (item.forgedObservation) {
+    forgeries += 1;
+    const fn = forgeryCheck[item.kind]?.[item.forgedObservation];
+    const outcome = fn ? verdicts(attempt(() => fork[fn](input)), attempt(() => ours[fn](input))) : "no check";
+    compare(`${label}: forgery rejected by ${fn}`, "err err", outcome);
+  }
 
   if (item.kind === "review" && isObject) {
     for (const fn of ["verifyPurchaseAttestation", "itemCountKey", "sellerRatingKey"]) {
@@ -151,8 +201,8 @@ for (const item of cases) {
   }
 }
 
-const owners = [...new Set(cases.map((c) => c.owner))];
-const ids = ["0032SSN7Q4EVG", "spring-drop-01", "a%20b", "\u00e9", "x/y"];
+const owners = [...new Set(cases.map((c) => c.owner)), "not-a-key", ""];
+const ids = ["0032SSN7Q4EVG", "spring-drop-01", "a%20b", "\u00e9", "x/y", "", undefined, null];
 const uriBuilders = [
   ["shop", (o) => fork.shopUriBuilder(o)],
   ["watchlist", (o) => fork.watchlistUriBuilder(o)],
@@ -167,10 +217,32 @@ const uriBuilders = [
 for (const owner of owners) {
   for (const [kind, build] of uriBuilders) {
     const singleton = build.length === 1;
-    for (const id of singleton ? [undefined] : ids) {
+    for (const id of singleton ? [undefined, "ignored"] : ids) {
       compare(`uri ${kind} ${owner} ${id}`, attempt(() => build(owner, id)), attempt(() => ours.buildMarketUri(owner, kind, id)));
     }
   }
+}
+
+// parseMarketUri gives the fork's parse_uri result for Market resources and
+// `unknown` for every other pubky.app path (including social paths whose id
+// the fork rejects).
+const parsed = (parse, uri) =>
+  attempt(() => {
+    const r = parse(uri);
+    return { user_id: r.user_id, resource: r.resource, resource_id: r.resource_id ?? null };
+  });
+for (const uri of uris) {
+  const a = parsed(fork.parse_uri, uri);
+  const b = parsed(ours.parseMarketUri, uri);
+  const forkMarket = a.startsWith("ok:") && JSON.parse(a.slice(3)).resource.startsWith("marketplace/");
+  const socialPath = !uri.includes("/pub/pubky.app/marketplace/");
+  let expected = a;
+  if (a.startsWith("ok:") && !forkMarket) {
+    expected = `ok:${describe({ ...JSON.parse(a.slice(3)), resource: "unknown", resource_id: null })}`;
+  } else if (a === "err" && socialPath && b.startsWith("ok:") && JSON.parse(b.slice(3)).resource === "unknown") {
+    expected = b;
+  }
+  compare(`parseMarketUri ${uri}`, expected, b);
 }
 
 const currencies = ["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "BTC", "SAT", "XYZ", "usd", ""];
@@ -191,7 +263,9 @@ for (const decade of [undefined, null, "", "USD:2", "BTC:4", "SAT:5", "JPY:3", "
 }
 
 console.log(`js parity against ${path.resolve(forkDir)}`);
-console.log(`  ${cases.length} record cases (${accepted} accepted by pubky-app-specs), ${compared} comparisons`);
+console.log(
+  `  ${cases.length} record cases (${accepted} accepted by pubky-app-specs, ${forgeries} forgeries), ${uris.length} URIs, ${compared} comparisons`
+);
 if (differences.length === 0) {
   console.log("js parity: no differences");
 } else {
