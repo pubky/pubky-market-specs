@@ -1,0 +1,8 @@
+pkg/nodejs/
+pkg/index.js
+pkg/index.cjs
+pkg/pubky_market_specs*
+pkg/node_modules/
+pkg/package-lock.json
+/target
+parity/target
