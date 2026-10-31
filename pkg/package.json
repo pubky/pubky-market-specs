@@ -1,0 +1,47 @@
+{
+  "name": "pubky-market-specs",
+  "version": "0.1.0",
+  "description": "Pubky Market commerce data formats: shops, listings, drops, reviews, receipts, watchlists and attestations",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.cjs",
+  "module": "index.js",
+  "types": "pubky_market_specs.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.cjs",
+      "types": "./pubky_market_specs.d.ts"
+    }
+  },
+  "files": [
+    "pubky_market_specs_bg.wasm",
+    "pubky_market_specs.d.ts",
+    "index.cjs",
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "homepage": "https://github.com/pubky/pubky-market-specs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pubky/pubky-market-specs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pubky/pubky-market-specs/issues"
+  },
+  "keywords": [
+    "pubky",
+    "pubky-market",
+    "marketplace",
+    "specs"
+  ],
+  "scripts": {
+    "build": "cargo run --bin bundle_specs_npm",
+    "test": "mocha test.js"
+  },
+  "devDependencies": {
+    "mocha": "^11.7.5"
+  }
+}

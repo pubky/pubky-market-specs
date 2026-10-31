@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "recordType": "review",
+  "ownerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "revision": 1,
+  "createdAt": "2026-08-21T00:00:00Z",
+  "updatedAt": "2026-08-21T00:00:00Z",
+  "reviewId": "ZG1V4ZJ9J6H773FMM034MCMMEM",
+  "subjectPubky": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+  "listingOwnerPubky": "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy",
+  "listingId": "0032SSN7Q4EVG",
+  "role": "buyer_reviewing_seller",
+  "ratings": {
+    "overall": 5
+  },
+  "text": "Great seller, fast shipping.",
+  "eligibilityAttestation": "eyJhbGciOiJFZERTQSIsInR5cCI6InB1Ymt5LXB1cmNoYXNlLWF0dGVzdGF0aW9uK3YxIn0.eyJ2IjoxLCJpc3MiOiI3amZnYWE5bnV0anlpeHppa2I3dGdtc2Y5Z2t3cTdpcXo0OTh6cjFuZDVpZzFmbmc0ZXN5Iiwic3ViIjoib3BlcnJyOHdzYnByM3VlOWQ0cWo0MWdlMWtjYzZyN2ZkaXk2bzN1Z2pycmhpNHk3N3JkbyIsImNwayI6InB4bnUzM3g3anRweDlhcjF5dHNpNHl4YnA2YTVvMzZnd2hmZnM4em94bWJ1cHRpY2kxankiLCJyb2xlIjoiYnV5ZXJfcmV2aWV3aW5nX3NlbGxlciIsImxpc3RpbmciOiJwdWJreTovL3B4bnUzM3g3anRweDlhcjF5dHNpNHl4YnA2YTVvMzZnd2hmZnM4em94bWJ1cHRpY2kxankvcHViL3B1Ymt5LmFwcC9tYXJrZXRwbGFjZS92MS9saXN0aW5ncy8wMDMyU1NON1E0RVZHIiwib3JkZXJfcmVmIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsImNvbXBsZXRlZF9vbiI6IjIwMjYtMDgtMjEiLCJhbW91bnRfYmFuZCI6IlNBVDo1IiwiaWF0IjoxNzg3NjU0MzIxfQ.34GE22HIKPzrC5yY3-bMQBkWlvvaiORbYkfCMUKnKyBdsIobCs-MFb3GxBQBg9d7X32SNEX_1TQW8yCnPOd7Dw"
+}

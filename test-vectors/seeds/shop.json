@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "recordType": "shop",
+  "ownerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "revision": 1,
+  "createdAt": "2025-01-01T00:00:00Z",
+  "updatedAt": "2025-01-02T00:00:00Z",
+  "name": "Boots & Co",
+  "bio": "Quality hiking boots.",
+  "location": {
+    "countryCode": "US",
+    "region": "Oregon"
+  },
+  "avatarUrl": "pubky://operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo/pub/pubky.app/marketplace/v1/media/avatar_01",
+  "shippingPolicy": "Ships within 3 business days.",
+  "returnPolicy": "Returns accepted within 30 days.",
+  "vacationMode": false
+}

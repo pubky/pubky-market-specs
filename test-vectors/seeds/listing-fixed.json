@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "recordType": "listing",
+  "ownerPubky": "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo",
+  "revision": 1,
+  "createdAt": "2025-01-01T00:00:00Z",
+  "updatedAt": "2025-01-02T00:00:00Z",
+  "listingId": "0035Y378AS20R",
+  "state": "active",
+  "title": "Hiking boots",
+  "description": "Sturdy leather hiking boots.",
+  "taxonomyVersion": 1,
+  "categoryId": "fashion",
+  "condition": "new",
+  "tags": [
+    "boots",
+    "hiking"
+  ],
+  "location": {
+    "countryCode": "US",
+    "region": "Oregon"
+  },
+  "media": [
+    {
+      "id": "image_01",
+      "type": "image",
+      "url": "pubky://operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo/pub/pubky.app/marketplace/v1/media/image_01",
+      "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mimeType": "image/png",
+      "byteSize": 1024,
+      "width": 800,
+      "height": 600,
+      "altText": "A pair of boots"
+    }
+  ],
+  "variants": [
+    {
+      "id": "variant_01",
+      "sku": "SKU-variant_01",
+      "options": {
+        "size": "42"
+      },
+      "quantity": 5,
+      "mediaIds": [],
+      "enabled": true
+    }
+  ],
+  "sale": {
+    "format": "fixed_price",
+    "unitPrice": {
+      "amountMinor": 12000,
+      "currency": "USD",
+      "exponent": 2
+    },
+    "acceptsOffers": true
+  },
+  "fulfillmentMethods": [
+    "physical"
+  ],
+  "package": {
+    "weightGrams": 1500,
+    "lengthMillimeters": 350,
+    "widthMillimeters": 250,
+    "heightMillimeters": 150
+  },
+  "shippingOptions": [
+    {
+      "pricing": "flat",
+      "id": "ship_01",
+      "label": "Standard",
+      "price": {
+        "amountMinor": 500,
+        "currency": "USD",
+        "exponent": 2
+      },
+      "estimatedMinDays": 2,
+      "estimatedMaxDays": 7
+    }
+  ],
+  "returnPolicy": {
+    "acceptsReturns": true,
+    "returnWindowDays": 30,
+    "buyerPaysReturnShipping": true
+  },
+  "adultOnly": false
+}
