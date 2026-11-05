@@ -6,7 +6,7 @@ The normative description of every record is [SPEC.md](SPEC.md).
 
 ## Wire format
 
-Shipping profiles, and the optional `shippingProfileId`, `shippingZones` and `shipsToCountries` members, are additions with no counterpart in `pubky-app-specs`: records without them keep the bytes below, and readers that predate them ignore the members. Records keep the paths and JSON of the marketplace records in `pubky-app-specs` `0.6.2-marketplace.16` ([BitcoinErrorLog/pubky-app-specs](https://github.com/BitcoinErrorLog/pubky-app-specs), tag `v0.6.2-marketplace.16`, rev `5ef6e31e`). For the same input both libraries accept or reject alike, and for accepted input they write the same bytes, derive the same IDs and verify the same attestations. Only Rust and TypeScript names change, to the `PubkyMarket` form.
+Shipping profiles, and the optional `shippingProfileId`, `shippingZones` and `shipsToCountries` members, are additions with no counterpart in `pubky-app-specs`: records without them keep the bytes below, and readers that predate them ignore the members. Records keep the paths and JSON of the marketplace records in `pubky-app-specs` `0.6.2-marketplace.16` ([BitcoinErrorLog/pubky-app-specs](https://github.com/BitcoinErrorLog/pubky-app-specs), tag `v0.6.2-marketplace.16`, rev `5ef6e31e`). For records that carry none of those additions, both libraries accept or reject alike, and for accepted input they write the same bytes, derive the same IDs and verify the same attestations. Only Rust and TypeScript names change, to the `PubkyMarket` form.
 
 | Record | Path | Rust type | npm builder |
 |---|---|---|---|

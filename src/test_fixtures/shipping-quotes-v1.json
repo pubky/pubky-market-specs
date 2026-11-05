@@ -1,5 +1,5 @@
 {
-  "description": "Shipping quote vectors for quote_shipping, quote_all_shipping_rates and legacy_shipping_option. Expected values come from an independent implementation of the pricing rules in SPEC.md (Shipping profiles). Errors carry the stable service code.",
+  "description": "Shipping quote vectors for quote_shipping, quote_all_shipping_rates and legacy_shipping_option. Expected values are computed by gen_shipping_quotes.py from the pricing rules in SPEC.md. Errors carry the stable service code.",
   "currency": "USD",
   "exponent": 2,
   "zoneSets": {
@@ -1302,13 +1302,13 @@
         "pricing": "flat",
         "id": "legacy",
         "label": "Shipping",
+        "estimatedMinDays": 2,
+        "estimatedMaxDays": 20,
         "price": {
           "amountMinor": 899,
           "currency": "USD",
           "exponent": 2
-        },
-        "estimatedMinDays": 2,
-        "estimatedMaxDays": 20
+        }
       }
     },
     {
