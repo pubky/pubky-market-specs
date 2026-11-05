@@ -90,9 +90,9 @@ pub struct PubkyMarketShop {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_complete_days: Option<i64>,
-    /// Countries the shop ships to, for browsing and filtering. A summary
-    /// of the shop's shipping profiles: the transaction service prices and
-    /// refuses orders from the profile or listing zones, never from this list.
+    /// Countries the shop ships to. A limit on top of the shipping profiles:
+    /// the transaction service prices each order from the profile or listing
+    /// zones and also refuses a destination outside this list.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ships_to_countries: Option<Vec<String>>,
