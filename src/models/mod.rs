@@ -11,12 +11,13 @@ pub mod marketplace_weight;
 pub mod order_receipt;
 pub mod order_receipt_attestation;
 pub mod review_response;
+pub mod shipping_profile;
 pub mod shop;
 pub mod watchlist;
 
 use super::{
     PubkyMarketAttestorAnnotation, PubkyMarketAttestorProfile, PubkyMarketDrop, PubkyMarketListing,
-    PubkyMarketReview, PubkyMarketReviewResponse, PubkyMarketShop,
+    PubkyMarketReview, PubkyMarketReviewResponse, PubkyMarketShippingProfile, PubkyMarketShop,
 };
 
 /// A unified enum wrapping every public Pubky Market record an indexer reads.
@@ -30,6 +31,7 @@ pub enum PubkyMarketObject {
     Drop(drop::PubkyMarketDrop),
     MarketplaceReview(marketplace_review::PubkyMarketReview),
     ReviewResponse(review_response::PubkyMarketReviewResponse),
+    ShippingProfile(shipping_profile::PubkyMarketShippingProfile),
     AttestorProfile(marketplace_attestor::PubkyMarketAttestorProfile),
     AttestorAnnotation(marketplace_attestor::PubkyMarketAttestorAnnotation),
 }
@@ -76,6 +78,11 @@ impl PubkyMarketObject {
                 let response =
                     <PubkyMarketReviewResponse as Validatable>::try_from(blob, review_id)?;
                 Ok(PubkyMarketObject::ReviewResponse(response))
+            }
+            Resource::ShippingProfile(profile_id) => {
+                let profile =
+                    <PubkyMarketShippingProfile as Validatable>::try_from(blob, profile_id)?;
+                Ok(PubkyMarketObject::ShippingProfile(profile))
             }
             Resource::AttestorProfile | Resource::AttestorAnnotation(_) => Err(
                 "Attestor records verify against their owner: use PubkyMarketObject::from_uri"

@@ -3,6 +3,7 @@ use crate::{
         validate_base_record, validate_marketplace_uri, PubkyMarketLocation,
         MARKETPLACE_SCHEMA_VERSION,
     },
+    models::shipping_profile::validate_country_list,
     traits::{HasPath, Validatable},
     APP_PATH, PUBLIC_PATH,
 };
@@ -18,6 +19,7 @@ use wasm_bindgen::prelude::*;
 use utoipa::ToSchema;
 
 // Validation (mirroring the pubky-app commerce shop record schema)
+const MAX_SHIPS_TO_COUNTRIES: usize = 250;
 const SHOP_RECORD_TYPE: &str = "shop";
 const MAX_SHOP_NAME_LENGTH: usize = 60;
 const MAX_SHOP_BIO_LENGTH: usize = 1000;
@@ -88,6 +90,12 @@ pub struct PubkyMarketShop {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_complete_days: Option<i64>,
+    /// Countries the shop ships to, for browsing and filtering. A summary
+    /// of the shop's shipping profiles: the transaction service prices and
+    /// refuses orders from the profile or listing zones, never from this list.
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ships_to_countries: Option<Vec<String>>,
 }
 
 impl PubkyMarketShop {
@@ -126,6 +134,7 @@ impl PubkyMarketShop {
             transaction_service,
             delivery_assume_days: None,
             auto_complete_days: None,
+            ships_to_countries: None,
         }
         .sanitize()
     }
@@ -140,6 +149,12 @@ impl PubkyMarketShop {
     ) -> Self {
         self.delivery_assume_days = delivery_assume_days;
         self.auto_complete_days = auto_complete_days;
+        self
+    }
+
+    /// Sets the countries the shop ships to (unique ISO 3166-1 alpha-2 codes).
+    pub fn with_ships_to_countries(mut self, ships_to_countries: Option<Vec<String>>) -> Self {
+        self.ships_to_countries = ships_to_countries;
         self
     }
 }
@@ -287,6 +302,9 @@ impl Validatable for PubkyMarketShop {
         }
         if let Some(days) = self.auto_complete_days {
             validate_term_days("autoCompleteDays", days)?;
+        }
+        if let Some(countries) = &self.ships_to_countries {
+            validate_country_list(countries, "shipsToCountries", MAX_SHIPS_TO_COUNTRIES)?;
         }
 
         Ok(())
@@ -599,5 +617,26 @@ mod tests {
         assert!(json.contains("\"transactionService\":\"https://tx.example.com\""));
         let parsed = <PubkyMarketShop as Validatable>::try_from(json.as_bytes(), "").unwrap();
         assert_eq!(parsed, shop);
+    }
+
+    #[test]
+    fn test_ships_to_countries_validate_and_roundtrip() {
+        let mut shop = valid_shop().with_ships_to_countries(Some(vec!["US".into(), "PT".into()]));
+        shop.validate(None).expect("valid countries");
+        let json = serde_json::to_string(&shop).unwrap();
+        assert!(json.contains("\"shipsToCountries\":[\"US\",\"PT\"]"));
+        let parsed = <PubkyMarketShop as Validatable>::try_from(json.as_bytes(), "").unwrap();
+        assert_eq!(parsed, shop);
+
+        for invalid in [
+            vec!["us".to_string()],
+            vec!["US".to_string(), "US".to_string()],
+        ] {
+            shop.ships_to_countries = Some(invalid);
+            assert!(shop.validate(None).is_err());
+        }
+        shop.ships_to_countries = None;
+        let value = serde_json::to_value(&shop).unwrap();
+        assert!(value.get("shipsToCountries").is_none());
     }
 }

@@ -4,6 +4,7 @@ use crate::{
         validate_hex_hash, validate_locks_uri, validate_marketplace_uri, PubkyMarketLocation,
         PubkyMarketMoney, MARKETPLACE_SCHEMA_VERSION, MAX_SAFE_INTEGER,
     },
+    models::shipping_profile::{sanitize_inline_zones, validate_zones, PubkyMarketShippingZone},
     traits::{HasIdPath, TimestampId, Validatable},
     APP_PATH, PUBLIC_PATH,
 };
@@ -467,7 +468,7 @@ impl PubkyMarketShippingOption {
         }
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         let (label, min_days, max_days) = match self {
             PubkyMarketShippingOption::Free {
                 id,
@@ -804,6 +805,18 @@ pub struct PubkyMarketListing {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub digital_lock: Option<PubkyMarketDigitalLock>,
     pub adult_only: bool,
+    /// Id of the seller's shipping profile whose zones price this listing.
+    /// Mutually exclusive with `shipping_zones`. The profile must use the
+    /// listing's currency and exponent.
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shipping_profile_id: Option<String>,
+    /// Zones that price this listing alone, in the currency and exponent of
+    /// the listing's first variant. Mutually exclusive with
+    /// `shipping_profile_id`.
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shipping_zones: Option<Vec<PubkyMarketShippingZone>>,
 }
 
 impl PubkyMarketListing {
@@ -862,6 +875,23 @@ impl PubkyMarketListing {
             return_policy,
             digital_lock,
             adult_only,
+            shipping_profile_id: None,
+            shipping_zones: None,
+        }
+        .sanitize()
+    }
+
+    /// Prices the listing with a shipping profile or with its own zones
+    /// (at most one), and sanitizes it.
+    pub fn with_shipping_zones(
+        self,
+        shipping_profile_id: Option<String>,
+        shipping_zones: Option<Vec<PubkyMarketShippingZone>>,
+    ) -> Self {
+        Self {
+            shipping_profile_id,
+            shipping_zones,
+            ..self
         }
         .sanitize()
     }
@@ -983,6 +1013,7 @@ impl Validatable for PubkyMarketListing {
                 .map(PubkyMarketShippingOption::sanitize)
                 .collect(),
             return_policy: self.return_policy.sanitize(),
+            shipping_zones: sanitize_inline_zones(self.shipping_zones),
             ..self
         }
     }
@@ -1228,6 +1259,24 @@ impl Validatable for PubkyMarketListing {
         }
         if self.digital_lock.is_some() && !has_digital {
             return Err("Validation Error: digitalLock requires digital fulfillment".into());
+        }
+
+        // Zone pricing
+        match (&self.shipping_profile_id, &self.shipping_zones) {
+            (Some(_), Some(_)) => {
+                return Err(
+                    "Validation Error: shippingProfileId and shippingZones are mutually exclusive"
+                        .into(),
+                );
+            }
+            (Some(profile_id), None) => validate_entity_id(profile_id, "shippingProfileId")?,
+            (None, Some(zones)) => validate_zones(zones)?,
+            (None, None) => {}
+        }
+        if (self.shipping_profile_id.is_some() || self.shipping_zones.is_some()) && !has_physical {
+            return Err(
+                "Validation Error: shipping zones and profiles require physical fulfillment".into(),
+            );
         }
 
         if let Some(package) = &self.package {
@@ -2137,5 +2186,89 @@ mod tests {
         assert!(variant.enabled);
         assert!(variant.media_ids.is_empty());
         assert!(variant.validate().is_ok());
+    }
+
+    fn zone(id: &str, countries: &[&str]) -> crate::PubkyMarketShippingZone {
+        crate::PubkyMarketShippingZone {
+            zone_id: id.to_string(),
+            name: id.to_string(),
+            countries: countries.iter().map(|c| c.to_string()).collect(),
+            rest_of_world: false,
+            rates: vec![crate::PubkyMarketShippingRate::Flat {
+                rate_id: "std".to_string(),
+                label: "Standard".to_string(),
+                amount_minor: 500,
+                estimated_min_days: 2,
+                estimated_max_days: 7,
+            }],
+        }
+    }
+
+    #[test]
+    fn shipping_profile_reference_and_inline_zones_validate_and_roundtrip() {
+        let by_profile = valid_listing().with_shipping_zones(Some("printful".to_string()), None);
+        by_profile.validate(None).expect("profile reference");
+        let value = serde_json::to_value(&by_profile).unwrap();
+        assert_eq!(value["shippingProfileId"], "printful");
+        assert!(value.get("shippingZones").is_none());
+
+        let inline = valid_listing().with_shipping_zones(None, Some(vec![zone("us", &["US"])]));
+        inline.validate(None).expect("inline zones");
+        let value = serde_json::to_value(&inline).unwrap();
+        assert_eq!(value["shippingZones"][0]["zoneId"], "us");
+        assert!(value.get("shippingProfileId").is_none());
+        let back: PubkyMarketListing = serde_json::from_value(value).unwrap();
+        assert_eq!(back, inline);
+    }
+
+    #[test]
+    fn listings_without_zone_fields_serialize_unchanged() {
+        let value = serde_json::to_value(valid_listing()).unwrap();
+        assert!(value.get("shippingProfileId").is_none());
+        assert!(value.get("shippingZones").is_none());
+        let parsed: PubkyMarketListing =
+            serde_json::from_str(LIVE_SHIPPING_LISTING).expect("live listing parses");
+        assert_eq!(parsed.shipping_profile_id, None);
+        assert_eq!(parsed.shipping_zones, None);
+    }
+
+    #[test]
+    fn zones_and_profile_reference_are_mutually_exclusive() {
+        let both = valid_listing().with_shipping_zones(
+            Some("printful".to_string()),
+            Some(vec![zone("us", &["US"])]),
+        );
+        let err = both.validate(None).expect_err("both set");
+        assert!(err.contains("mutually exclusive"), "{err}");
+    }
+
+    #[test]
+    fn zone_pricing_rejects_invalid_ids_zones_and_non_physical_listings() {
+        let bad_id = valid_listing().with_shipping_zones(Some("bad id!".to_string()), None);
+        assert!(bad_id.validate(None).is_err());
+
+        let overlapping = valid_listing().with_shipping_zones(
+            None,
+            Some(vec![zone("a", &["US", "CA"]), zone("b", &["CA"])]),
+        );
+        assert!(overlapping.validate(None).is_err());
+
+        let empty = valid_listing().with_shipping_zones(None, Some(vec![]));
+        assert!(empty.validate(None).is_err());
+
+        let mut digital = valid_listing().with_shipping_zones(Some("printful".to_string()), None);
+        digital.fulfillment_methods = vec![PubkyMarketFulfillmentMethod::Digital];
+        digital.package = None;
+        digital.shipping_options = vec![];
+        let err = digital.validate(None).expect_err("digital with profile");
+        assert!(err.contains("require physical fulfillment"), "{err}");
+    }
+
+    #[test]
+    fn inline_zone_labels_are_sanitized() {
+        let mut inline_zone = zone("us", &["US"]);
+        inline_zone.name = "  United States  ".to_string();
+        let listing = valid_listing().with_shipping_zones(None, Some(vec![inline_zone]));
+        assert_eq!(listing.shipping_zones.unwrap()[0].name, "United States");
     }
 }

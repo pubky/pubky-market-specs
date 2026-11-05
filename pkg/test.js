@@ -13,6 +13,11 @@ import {
   buildWatchlist,
   buildOrderReceipt,
   buildDrop,
+  buildShippingProfile,
+  quoteShipping,
+  quoteAllShippingRates,
+  legacyShippingOption,
+  PubkyMarketShippingProfile,
   buildMarketUri,
   parseMarketUri,
   parseOrderReceiptAttestation,
@@ -764,6 +769,85 @@ describe("pubky-market-specs", () => {
     });
   });
 
+  describe("Shipping profiles and quotes", () => {
+    const shipping = readJson("../src/test_fixtures/shipping-quotes-v1.json");
+    const profileBody = () => ({
+      schemaVersion: 1,
+      recordType: "shipping_profile",
+      ownerPubky: OTTO,
+      revision: 1,
+      createdAt: "2026-11-05T10:00:00Z",
+      updatedAt: "2026-11-05T10:00:00Z",
+      profileId: "printful",
+      name: " Printful worldwide ",
+      currency: shipping.currency,
+      exponent: shipping.exponent,
+      origins: ["US"],
+      excludedCountries: shipping.zoneSets.main.excludedCountries,
+      zones: shipping.zoneSets.main.zones,
+    });
+
+    it("should build a profile at its own id", () => {
+      const { shipping_profile, meta } = buildShippingProfile(OTTO, profileBody());
+      assert.strictEqual(meta.id, "printful");
+      assert.strictEqual(meta.path, "/pub/pubky.app/marketplace/v1/shipping_profiles/printful");
+      assert.strictEqual(meta.url, buildMarketUri(OTTO, "shipping_profile", "printful"));
+      assert.strictEqual(shipping_profile.toJson().name, "Printful worldwide");
+      assert.strictEqual(
+        PubkyMarketShippingProfile.fromJson(shipping_profile.toJson()).toJson().profileId,
+        "printful"
+      );
+    });
+
+    it("should reject an invalid profile", () => {
+      const clash = profileBody();
+      clash.zones[1].countries.push("US");
+      assert.throws(() => buildShippingProfile(OTTO, clash), /only one shipping zone/);
+      const noZones = profileBody();
+      noZones.zones = [];
+      assert.throws(() => buildShippingProfile(OTTO, noZones), /zones/);
+    });
+
+    it("should match every shared quote vector", () => {
+      for (const vector of shipping.quotes) {
+        const { zones, excludedCountries } = shipping.zoneSets[vector.zones];
+        const run = () =>
+          quoteShipping(zones, excludedCountries, vector.destination, vector.rateId, vector.units);
+        if (vector.expected.error) {
+          assert.throws(run, (error) => error === vector.expected.error, JSON.stringify(vector));
+        } else {
+          assert.deepStrictEqual(withoutNulls(run()), vector.expected, JSON.stringify(vector));
+        }
+      }
+    });
+
+    it("should match every shared all-rates and legacy vector", () => {
+      for (const vector of shipping.allRates) {
+        const { zones, excludedCountries } = shipping.zoneSets[vector.zones];
+        const run = () => quoteAllShippingRates(zones, excludedCountries, vector.destination, vector.units);
+        if (vector.expected.error) {
+          assert.throws(run, (error) => error === vector.expected.error, JSON.stringify(vector));
+        } else {
+          assert.deepStrictEqual(withoutNulls(run()), vector.expected.quotes, JSON.stringify(vector));
+        }
+      }
+      for (const vector of shipping.legacy) {
+        const option = legacyShippingOption(vector.zones, shipping.currency, shipping.exponent, "legacy", "Shipping");
+        assert.deepStrictEqual(withoutNulls(option), vector.expected);
+      }
+    });
+
+    it("should refuse a unit count that is not a safe integer", () => {
+      const { zones, excludedCountries } = shipping.zoneSets.main;
+      for (const units of [1.5, Number.NaN, 2 ** 60]) {
+        assert.throws(
+          () => quoteShipping(zones, excludedCountries, "US", "std", units),
+          (error) => error === "INVALID_QUANTITY"
+        );
+      }
+    });
+  });
+
   describe("buildMarketUri", () => {
     const ID = "0032SSN7Q4EVG";
     const base = `pubky://${OTTO}/pub/pubky.app/marketplace/v1`;
@@ -775,6 +859,7 @@ describe("pubky-market-specs", () => {
       ["review_response", ID, `${base}/review_responses/${ID}`],
       ["watchlist", undefined, `pubky://${OTTO}/priv/pubky.app/marketplace/v1/watchlist.json`],
       ["order_receipt", "r-1", `pubky://${OTTO}/priv/pubky.app/marketplace/v1/receipts/r-1`],
+      ["shipping_profile", "printful", `${base}/shipping_profiles/printful`],
       ["attestor_profile", undefined, `${base}/attestor/profile`],
       ["attestor_annotation", "ref-1", `${base}/attestor/annotations/ref-1`],
     ];

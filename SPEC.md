@@ -1,6 +1,6 @@
 # Pubky Market data model specification
 
-_Version 0.1.0. Wire format identical to the marketplace records of `pubky-app-specs` `0.6.2-marketplace.16`._
+_Version 0.2.0. Wire format identical to the marketplace records of `pubky-app-specs` `0.6.2-marketplace.16`, plus the shipping profile record and the optional `shippingProfileId`, `shippingZones` and `shipsToCountries` members, all additive; `schemaVersion` stays `1`._
 
 ## Table of Contents
 
@@ -9,6 +9,7 @@ _Version 0.1.0. Wire format identical to the marketplace records of `pubky-app-s
 - [Data Models](#data-models)
   - [PubkyMarketShop](#pubkymarketshop)
   - [PubkyMarketListing](#pubkymarketlisting)
+  - [PubkyMarketShippingProfile](#pubkymarketshippingprofile)
   - [PubkyMarketDrop](#pubkymarketdrop)
   - [PubkyMarketReview](#pubkymarketreview)
   - [Purchase Attestation (embedded JWS)](#purchase-attestation-embedded-jws)
@@ -69,6 +70,7 @@ Every record lives under the `pubky.app` app directory of its owner's homeserver
 | `vacationMode`   | Boolean  | Whether the shop is paused (vacation). | Required.                                                                          |
 | `transactionService` | String | HTTPS base URL of the marketplace transaction service this shop sells through. | Optional. Must parse as a URL with scheme exactly `https`, no credentials, no query, no fragment; maximum length 300 characters. Absent fields are not serialized (records without it round-trip unchanged). |
 | `deliveryAssumeDays` | Integer | Days after shipment when delivery is assumed (the transaction service has no carrier feed). | Optional. Whole days, 1–60. Absent means the transaction service's configured default applies. Absent fields are not serialized. |
+| `shipsToCountries` | Array | Countries the shop ships to, for browsing and filtering. | Optional. Up to 250 unique uppercase ISO 3166-1 alpha-2 codes. A summary: the transaction service prices and refuses from the profile or listing zones, never from this list. Absent fields are not serialized. |
 | `autoCompleteDays` | Integer | Days after delivery when the order completes unless a return is opened. | Optional. Whole days, 1–60. Absent means the transaction service's configured default applies. Absent fields are not serialized. |
 
 **`transactionService` semantics:** when present, clients MUST resolve transactional commands (checkout, offers, bids, orders) for this shop against this authority, falling back to their configured default when absent. Two different services may register the same public listing — the shop record is the seller's declaration of which one is authoritative.
@@ -109,12 +111,68 @@ Every record lives under the `pubky.app` app directory of its owner's homeserver
 | `returnPolicy`       | Object   | Return policy.                           | Required. Return window (1–365 days) required iff returns are accepted.                                            |
 | `digitalLock`        | Object   | Locks policy for digital delivery.       | Optional with `digital` fulfillment (Locks delivery), forbidden otherwise.                                         |
 | `adultOnly`          | Boolean  | Adult-content flag.                      | Required.                                                                                                          |
+| `shippingProfileId`  | String   | Id of the seller's shipping profile that prices this listing. | Optional. Path-safe entity id. Mutually exclusive with `shippingZones`. Requires `physical` fulfillment. The profile must use the listing's currency and exponent (enforced by the transaction service). Absent fields are not serialized. |
+| `shippingZones`      | Array    | Zones that price this listing alone.     | Optional. Same rules as a profile's `zones` (see [PubkyMarketShippingProfile](#pubkymarketshippingprofile)). Mutually exclusive with `shippingProfileId`. Requires `physical` fulfillment. Amounts are in the listing's currency and exponent. Absent fields are not serialized. |
+
+**Zone pricing:** a listing with `shippingProfileId` or `shippingZones` is priced by zone. A reader that understands zones prices the listing from them and ignores `shippingOptions` for pricing. `shippingOptions` must still satisfy its own rules, so a zone-priced listing carries one `free` or `flat` option that readers predating zones can parse and price: the highest, over the zones, of each zone's cheapest first-unit price, with the widest delivery estimate (`legacy_shipping_option`, wasm `legacyShippingOption`). Readers that predate zones ignore the new members and price that option alone, which cannot express zone differences or per-unit charges. A new `pricing` kind is never added to `shippingOptions`, whose enum is closed.
 
 **Auction rules:** all auction prices must share one asset and exponent; `endsAt` must follow `startsAt`; reserve price must not be below the starting price; buy-now price must exceed the starting price; anti-sniping windows are 0–3600 seconds; auctions require exactly one variant. Variant price overrides and flat shipping prices must use the listing asset.
 
 **Validation Notes:**
 
 - The `listing_id` in the URI must be a valid **Timestamp ID** and must match the record's `listingId` field.
+
+---
+
+### PubkyMarketShippingProfile
+
+**Description:** A seller's reusable shipping rules: where goods ship from, which countries they ship to and what each zone charges. Listings reference a profile by id or carry their own zones. This is a PUBLIC record read by clients, indexers and the transaction service. All fields are serialized in camelCase and unknown members are ignored when parsing and are not written back.
+
+**URI:** `/pub/pubky.app/marketplace/v1/shipping_profiles/:profile_id`
+
+| **Field**           | **Type** | **Description**                              | **Validation Rules**                                                                                           |
+| ------------------- | -------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`     | Integer  | Marketplace contract version.                | Required. Must be `1`.                                                                                         |
+| `recordType`        | String   | Record discriminator.                        | Required. Must be `"shipping_profile"`.                                                                        |
+| `ownerPubky`        | String   | Pubky of the seller.                         | Required. 52-character z-base-32 pubky.                                                                        |
+| `revision`          | Integer  | Record revision.                             | Required. Positive safe integer.                                                                               |
+| `createdAt`         | String   | Creation datetime.                           | Required. ISO-8601 with offset.                                                                                |
+| `updatedAt`         | String   | Last-update datetime.                        | Required. ISO-8601 with offset. Must not precede `createdAt`.                                                  |
+| `profileId`         | String   | Profile identifier.                          | Required. Path-safe entity id (1–128 chars of `[A-Za-z0-9_-]`); must equal the id in the record path.          |
+| `name`              | String   | Display name.                                | Required. Trimmed. Length: 1–100 characters.                                                                   |
+| `currency`          | String   | Asset code of every amount in the profile.   | Required. Uppercase asset code, 3–12 characters.                                                               |
+| `exponent`          | Integer  | Decimal places of `currency`.                | Required. 0–18.                                                                                                |
+| `origins`           | Array    | Countries the goods ship from.               | Optional (defaults to empty). Up to 50 unique uppercase ISO 3166-1 alpha-2 codes. Display and filter data.     |
+| `excludedCountries` | Array    | Countries never shipped to.                  | Optional (defaults to empty). Up to 250 unique codes. Wins over any zone and over `restOfWorld`.               |
+| `zones`             | Array    | Where goods ship to and at what price.       | Required. 1–50 zones; unique `zoneId`s; a country belongs to at most one zone; at most one zone has `restOfWorld`. |
+
+**Zone:** `zoneId` (path-safe entity id), `name` (trimmed, 1–100 characters), `countries` (unique uppercase alpha-2 codes, up to 250), `restOfWorld` (boolean, absent means `false`) and `rates` (1–10, unique `rateId`s). A zone needs `countries` or `restOfWorld`.
+
+**Rate:** `rateId` (path-safe entity id), `label` (trimmed, 1–100 characters), `estimatedMinDays` and `estimatedMaxDays` (0–365, maximum not below minimum) and a closed `pricing` kind, so a reader never prices a rate it does not understand:
+
+| `pricing`  | Members                                | Charge for a shipping group of `n` units          |
+| ---------- | -------------------------------------- | ------------------------------------------------- |
+| `free`     | none                                   | `0`                                               |
+| `flat`     | `amountMinor`                          | `amountMinor`, once per group                     |
+| `per_item` | `firstMinor`, `additionalMinor`        | `firstMinor + (n - 1) * additionalMinor`          |
+
+Amounts are integers in `0..=9007199254740991` minor units. A quote that does not fit a safe integer is refused.
+
+**Quote function.** `quote_shipping(zones, excludedCountries, destination, rateId, units)` (wasm `quoteShipping`) is the one pricing function; the transaction service and clients use it, and `src/test_fixtures/shipping-quotes-v1.json` holds shared vectors both sides replay.
+
+1. `destination` must be an uppercase ISO 3166-1 alpha-2 code, else `INVALID_DESTINATION`.
+2. An excluded destination is not shipped to (`SHIPPING_UNAVAILABLE_TO_COUNTRY`).
+3. The zone is the one that lists the destination in `countries`; otherwise the `restOfWorld` zone; otherwise the destination is not shipped to.
+4. The rate is the zone's rate with `rateId`, else `UNKNOWN_SHIPPING_RATE`.
+5. `units` must be in `1..=1000000` (`INVALID_QUANTITY`); the charge is computed with checked arithmetic and must be a safe integer (`SHIPPING_OVERFLOW`).
+
+A shipping group is the lines of one seller order that share one profile, or one listing's inline zones. `quote_all_shipping_rates` (wasm `quoteAllShippingRates`) quotes every rate of the destination's zone for the buyer's choice.
+
+**Validation Notes:**
+
+- The `profile_id` in the URI must match the record's `profileId`.
+- A listing can use the profile only in the same currency and exponent.
+- A path under `marketplace/v1/shipping_profiles/` parses to `Resource::ShippingProfile` (wasm resource `marketplace/v1/shipping_profiles`); readers of earlier versions parse it as `Unknown`.
 
 ---
 

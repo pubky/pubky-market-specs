@@ -1,6 +1,6 @@
 //! Pubky Market commerce data formats.
 //!
-//! Shops, listings, drops, reviews, review responses, private watchlists and
+//! Shops, listings, shipping profiles, drops, reviews, review responses, private watchlists and
 //! order receipts, the purchase, order-receipt and drop-edition attestations,
 //! and the attestor records, with validation, sanitization, ID derivation and
 //! URI helpers.
@@ -84,6 +84,12 @@ pub use models::order_receipt_attestation::{
     ORDER_RECEIPT_ATTESTATION_V2_VERSION, ORDER_RECEIPT_ATTESTATION_VERSION,
 };
 pub use models::review_response::PubkyMarketReviewResponse;
+pub use models::shipping_profile::{
+    legacy_shipping_option, quote_all_shipping_rates, quote_shipping,
+    shipping_zone_for_destination, PubkyMarketShippingProfile, PubkyMarketShippingQuote,
+    PubkyMarketShippingQuoteError, PubkyMarketShippingRate, PubkyMarketShippingZone,
+    MAX_SHIPPING_GROUP_UNITS,
+};
 pub use models::shop::PubkyMarketShop;
 pub use models::watchlist::{
     PubkyMarketWatchlist, PubkyMarketWatchlistItem, PubkyMarketWatchlistTombstone,
@@ -95,8 +101,8 @@ pub use types::PubkyId;
 pub use uri::{
     attestor_annotation_uri_builder, attestor_profile_uri_builder, drop_uri_builder,
     is_pubky_scheme, listing_uri_builder, marketplace_review_uri_builder,
-    order_receipt_uri_builder, review_response_uri_builder, shop_uri_builder, try_parse_pubky_path,
-    watchlist_uri_builder, ParsedUri, PubkyPath, Resource,
+    order_receipt_uri_builder, review_response_uri_builder, shipping_profile_uri_builder,
+    shop_uri_builder, try_parse_pubky_path, watchlist_uri_builder, ParsedUri, PubkyPath, Resource,
 };
 
 #[cfg(target_arch = "wasm32")]

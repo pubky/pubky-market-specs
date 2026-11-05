@@ -13,12 +13,13 @@ const listingUri = buildMarketUri(sellerPubky, "listing", listingId);
 const claims = verifyPurchaseAttestation(reviewJson);
 ```
 
-- `buildShop`, `buildListing`, `buildReview`, `buildReviewResponse`, `buildWatchlist`, `buildOrderReceipt`, `buildDrop`: `(ownerPubky, record) -> { <record>, meta }`. Each sanitizes and validates the record and derives its ID where it has one.
-- `buildMarketUri(ownerPubky, kind, id?)` for `shop`, `listing`, `drop`, `review`, `review_response`, `watchlist`, `order_receipt`, `attestor_profile`, `attestor_annotation`; concatenates without validating, as the `pubky-app-specs` builders do.
+- `buildShop`, `buildListing`, `buildReview`, `buildReviewResponse`, `buildWatchlist`, `buildOrderReceipt`, `buildDrop`, `buildShippingProfile`: `(ownerPubky, record) -> { <record>, meta }`. Each sanitizes and validates the record and derives its ID where it has one.
+- `buildMarketUri(ownerPubky, kind, id?)` for `shop`, `listing`, `drop`, `review`, `review_response`, `watchlist`, `order_receipt`, `shipping_profile`, `attestor_profile`, `attestor_annotation`; concatenates without validating, as the `pubky-app-specs` builders do.
 - `parseMarketUri(uri)`: `{ user_id, resource, resource_id }` for Market records, resource `unknown` for other `pubky.app` paths.
+- Shipping: `quoteShipping(zones, excludedCountries, destination, rateId, units)` and `quoteAllShippingRates(zones, excludedCountries, destination, units)` price one shipping group from a profile's or listing's zones and throw a stable error code (`SHIPPING_UNAVAILABLE_TO_COUNTRY`, `UNKNOWN_SHIPPING_RATE`, `INVALID_DESTINATION`, `INVALID_QUANTITY`, `SHIPPING_OVERFLOW`); `legacyShippingOption(zones, currency, exponent, id, label)` returns the `shippingOptions` entry older readers price a listing with.
 - Attestations: `parsePurchaseAttestation`, `verifyPurchaseAttestation`, `itemCountKey`, `sellerRatingKey`, `priceDecade`, `priceWeight`, `parseOrderReceiptAttestation`, `verifyOrderReceiptAttestation`, `parseDropEditionAttestation`, `verifyDropEditionAttestation`.
 - Attestor records: `verifyAttestorProfile(uri, json)`, `verifyAttestorAnnotation(uri, json)`.
-- Record classes with `fromJson` / `toJson`: `PubkyMarketShop`, `PubkyMarketListing`, `PubkyMarketDrop`, `PubkyMarketReview`, `PubkyMarketReviewResponse`, `PubkyMarketWatchlist`, `PubkyMarketOrderReceipt`.
+- Record classes with `fromJson` / `toJson`: `PubkyMarketShop`, `PubkyMarketListing`, `PubkyMarketDrop`, `PubkyMarketReview`, `PubkyMarketReviewResponse`, `PubkyMarketWatchlist`, `PubkyMarketOrderReceipt`, `PubkyMarketShippingProfile`.
 
 Specification: <https://github.com/pubky/pubky-market-specs/blob/main/SPEC.md>
 

@@ -1,7 +1,7 @@
 use crate::{
     traits::{HasIdPath, HasPath},
     PubkyMarketAttestorAnnotation, PubkyMarketAttestorProfile, PubkyMarketDrop, PubkyMarketListing,
-    PubkyMarketReview, PubkyMarketReviewResponse, PubkyMarketShop,
+    PubkyMarketReview, PubkyMarketReviewResponse, PubkyMarketShippingProfile, PubkyMarketShop,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -19,6 +19,7 @@ pub enum Resource {
     Drop(String),
     MarketplaceReview(String),
     ReviewResponse(String),
+    ShippingProfile(String),
     AttestorProfile,
     AttestorAnnotation(String),
     #[default]
@@ -35,6 +36,9 @@ impl fmt::Display for Resource {
             Resource::MarketplaceReview(_) => PubkyMarketReview::PATH_SEGMENT.trim_end_matches('/'),
             Resource::ReviewResponse(_) => {
                 PubkyMarketReviewResponse::PATH_SEGMENT.trim_end_matches('/')
+            }
+            Resource::ShippingProfile(_) => {
+                PubkyMarketShippingProfile::PATH_SEGMENT.trim_end_matches('/')
             }
             Resource::AttestorProfile => PubkyMarketAttestorProfile::PATH_SEGMENT,
             Resource::AttestorAnnotation(_) => {
@@ -55,6 +59,7 @@ impl Resource {
             | Resource::Drop(id)
             | Resource::MarketplaceReview(id)
             | Resource::ReviewResponse(id)
+            | Resource::ShippingProfile(id)
             | Resource::AttestorAnnotation(id) => Some(id.clone()),
             Resource::Shop | Resource::AttestorProfile | Resource::Unknown => None,
         }

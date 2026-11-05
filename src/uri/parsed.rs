@@ -1,8 +1,8 @@
 use crate::{
     traits::{HasIdPath, HasPath},
     PubkyId, PubkyMarketAttestorAnnotation, PubkyMarketAttestorProfile, PubkyMarketDrop,
-    PubkyMarketListing, PubkyMarketReview, PubkyMarketReviewResponse, PubkyMarketShop, APP_PATH,
-    MARKETPLACE_PATH, PROTOCOL,
+    PubkyMarketListing, PubkyMarketReview, PubkyMarketReviewResponse, PubkyMarketShippingProfile,
+    PubkyMarketShop, APP_PATH, MARKETPLACE_PATH, PROTOCOL,
 };
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
@@ -29,6 +29,7 @@ impl ParsedUri {
             Resource::Drop(id) => PubkyMarketDrop::create_path(id),
             Resource::MarketplaceReview(id) => PubkyMarketReview::create_path(id),
             Resource::ReviewResponse(id) => PubkyMarketReviewResponse::create_path(id),
+            Resource::ShippingProfile(id) => PubkyMarketShippingProfile::create_path(id),
             Resource::AttestorProfile => PubkyMarketAttestorProfile::create_path(),
             Resource::AttestorAnnotation(id) => PubkyMarketAttestorAnnotation::create_path(id),
             Resource::Unknown => return Err("Cannot convert Unknown resource to URI".to_string()),
@@ -97,6 +98,7 @@ fn resource_from_segments(segments: &[String]) -> Resource {
                 PubkyMarketDrop::PATH_SEGMENT => Resource::Drop(id.clone()),
                 PubkyMarketReview::PATH_SEGMENT => Resource::MarketplaceReview(id.clone()),
                 PubkyMarketReviewResponse::PATH_SEGMENT => Resource::ReviewResponse(id.clone()),
+                PubkyMarketShippingProfile::PATH_SEGMENT => Resource::ShippingProfile(id.clone()),
                 _ => Resource::Unknown,
             }
         }
@@ -147,6 +149,10 @@ mod tests {
             (
                 attestor_annotation_uri_builder(USER_ID.into(), "ref-1".into()),
                 Resource::AttestorAnnotation("ref-1".into()),
+            ),
+            (
+                crate::shipping_profile_uri_builder(USER_ID.into(), "printful".into()),
+                Resource::ShippingProfile("printful".into()),
             ),
         ];
         for (uri, expected) in cases {
