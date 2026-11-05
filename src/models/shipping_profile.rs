@@ -296,7 +296,7 @@ fn sanitize_zones(zones: Vec<PubkyMarketShippingZone>) -> Vec<PubkyMarketShippin
 
 /// Validates a zone list: 1-50 zones, unique zone ids, one country in at most
 /// one zone and at most one rest-of-world zone.
-pub(crate) fn validate_zones(zones: &[PubkyMarketShippingZone]) -> Result<(), String> {
+pub fn validate_shipping_zones(zones: &[PubkyMarketShippingZone]) -> Result<(), String> {
     if !(1..=MAX_ZONES).contains(&zones.len()) {
         return Err(format!(
             "Validation Error: shipping requires 1-{MAX_ZONES} zones"
@@ -474,7 +474,7 @@ impl Validatable for PubkyMarketShippingProfile {
         self.asset().validate_non_negative("shipping profile")?;
         validate_country_list(&self.origins, "origins", MAX_ORIGINS)?;
         validate_country_list(&self.excluded_countries, "excludedCountries", MAX_COUNTRIES)?;
-        validate_zones(&self.zones)
+        validate_shipping_zones(&self.zones)
     }
 }
 
@@ -497,7 +497,7 @@ pub fn legacy_shipping_option(
     option_id: &str,
     label: &str,
 ) -> Result<PubkyMarketShippingOption, String> {
-    validate_zones(zones)?;
+    validate_shipping_zones(zones)?;
     let mut price = 0;
     let mut min_days = i64::MAX;
     let mut max_days = 0;

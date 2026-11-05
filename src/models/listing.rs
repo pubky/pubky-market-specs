@@ -4,7 +4,9 @@ use crate::{
         validate_hex_hash, validate_locks_uri, validate_marketplace_uri, PubkyMarketLocation,
         PubkyMarketMoney, MARKETPLACE_SCHEMA_VERSION, MAX_SAFE_INTEGER,
     },
-    models::shipping_profile::{sanitize_inline_zones, validate_zones, PubkyMarketShippingZone},
+    models::shipping_profile::{
+        sanitize_inline_zones, validate_shipping_zones, PubkyMarketShippingZone,
+    },
     traits::{HasIdPath, TimestampId, Validatable},
     APP_PATH, PUBLIC_PATH,
 };
@@ -1270,7 +1272,7 @@ impl Validatable for PubkyMarketListing {
                 );
             }
             (Some(profile_id), None) => validate_entity_id(profile_id, "shippingProfileId")?,
-            (None, Some(zones)) => validate_zones(zones)?,
+            (None, Some(zones)) => validate_shipping_zones(zones)?,
             (None, None) => {}
         }
         if (self.shipping_profile_id.is_some() || self.shipping_zones.is_some()) && !has_physical {
