@@ -2,8 +2,8 @@ use crate::{
     constants::PROTOCOL,
     traits::{HasIdPath, HasPath},
     PubkyMarketAttestorAnnotation, PubkyMarketAttestorProfile, PubkyMarketDrop, PubkyMarketListing,
-    PubkyMarketOrderReceipt, PubkyMarketReview, PubkyMarketReviewResponse, PubkyMarketShop,
-    PubkyMarketWatchlist,
+    PubkyMarketOrderReceipt, PubkyMarketReview, PubkyMarketReviewResponse,
+    PubkyMarketShippingProfile, PubkyMarketShop, PubkyMarketWatchlist,
 };
 
 /// Builds a Shop URI of the form "pubky://<owner_id>/pub/pubky.app/marketplace/v1/shop.json"
@@ -22,6 +22,12 @@ pub fn listing_uri_builder(seller_id: String, listing_id: String) -> String {
 pub fn drop_uri_builder(owner_id: String, drop_id: String) -> String {
     let drop_path = PubkyMarketDrop::create_path(&drop_id);
     [PROTOCOL, &owner_id, &drop_path].concat()
+}
+
+/// Builds a Shipping Profile URI of the form "pubky://<owner_id>/pub/pubky.app/marketplace/v1/shipping_profiles/<profile_id>"
+pub fn shipping_profile_uri_builder(owner_id: String, profile_id: String) -> String {
+    let profile_path = PubkyMarketShippingProfile::create_path(&profile_id);
+    [PROTOCOL, &owner_id, &profile_path].concat()
 }
 
 /// Builds a review URI of the form "pubky://<author_id>/pub/pubky.app/marketplace/v1/reviews/<review_id>"

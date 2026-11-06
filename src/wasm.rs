@@ -83,6 +83,11 @@ result_struct!(
 result_struct!(WatchlistResult, watchlist, PubkyMarketWatchlist);
 result_struct!(OrderReceiptResult, order_receipt, PubkyMarketOrderReceipt);
 result_struct!(DropResult, drop, PubkyMarketDrop);
+result_struct!(
+    ShippingProfileResult,
+    shipping_profile,
+    PubkyMarketShippingProfile
+);
 
 fn owner(owner_pubky: &str) -> Result<PubkyId, String> {
     PubkyId::try_from(owner_pubky)
@@ -211,15 +216,134 @@ pub fn build_drop(owner_pubky: &str, drop: JsValue) -> Result<DropResult, String
     Ok(DropResult { drop, meta })
 }
 
+/// Builds a shipping profile record. The path ID equals the record's
+/// `profileId` (a marketplace entity id chosen by the seller).
+#[wasm_bindgen(js_name = buildShippingProfile)]
+pub fn build_shipping_profile(
+    owner_pubky: &str,
+    shipping_profile: JsValue,
+) -> Result<ShippingProfileResult, String> {
+    let owner = owner(owner_pubky)?;
+    let profile: PubkyMarketShippingProfile =
+        from_value(shipping_profile).map_err(|e| e.to_string())?;
+    let shipping_profile = profile.sanitize();
+
+    let profile_id = shipping_profile.profile_id.clone();
+    shipping_profile.validate(Some(&profile_id))?;
+
+    let path = PubkyMarketShippingProfile::create_path(&profile_id);
+    let meta = Meta::from_object(Some(&profile_id), &owner, path);
+    Ok(ShippingProfileResult {
+        shipping_profile,
+        meta,
+    })
+}
+
+fn zones_from(zones: JsValue) -> Result<Vec<PubkyMarketShippingZone>, String> {
+    from_value(zones).map_err(|e| format!("Error parsing shipping zones: {e}"))
+}
+
+fn countries_from(countries: JsValue) -> Result<Vec<String>, String> {
+    if countries.is_undefined() || countries.is_null() {
+        return Ok(Vec::new());
+    }
+    from_value(countries).map_err(|e| format!("Error parsing excluded countries: {e}"))
+}
+
+/// Quotes one shipping group of `units` units to `destination` (an uppercase
+/// ISO 3166-1 alpha-2 code) under the rate `rateId` of the zone that serves
+/// it. `zones` is a profile's or listing's zone array and `excludedCountries`
+/// the profile's excluded countries (or undefined). Returns the quote
+/// (`zoneId`, `rateId`, `label`, `amountMinor`, `estimatedMinDays`,
+/// `estimatedMaxDays`) or throws the stable error code
+/// (`SHIPPING_UNAVAILABLE_TO_COUNTRY`, `UNKNOWN_SHIPPING_RATE`,
+/// `INVALID_DESTINATION`, `INVALID_QUANTITY`, `SHIPPING_OVERFLOW`).
+#[wasm_bindgen(js_name = quoteShipping)]
+pub fn quote_shipping_js(
+    zones: JsValue,
+    excluded_countries: JsValue,
+    destination: &str,
+    rate_id: &str,
+    units: f64,
+) -> Result<JsValue, String> {
+    let units = units_from(units)?;
+    let quote = quote_shipping(
+        &zones_from(zones)?,
+        &countries_from(excluded_countries)?,
+        destination,
+        rate_id,
+        units,
+    )
+    .map_err(|e| e.code().to_string())?;
+    to_value(&quote).map_err(|e| e.to_string())
+}
+
+/// Quotes every rate of the zone that serves `destination`, in the zone's
+/// order. Throws the same codes as `quoteShipping`.
+#[wasm_bindgen(js_name = quoteAllShippingRates)]
+pub fn quote_all_shipping_rates_js(
+    zones: JsValue,
+    excluded_countries: JsValue,
+    destination: &str,
+    units: f64,
+) -> Result<JsValue, String> {
+    let units = units_from(units)?;
+    let quotes = quote_all_shipping_rates(
+        &zones_from(zones)?,
+        &countries_from(excluded_countries)?,
+        destination,
+        units,
+    )
+    .map_err(|e| e.code().to_string())?;
+    to_value(&quotes).map_err(|e| e.to_string())
+}
+
+/// The single `shippingOptions` entry written beside zones so readers that
+/// predate them still parse the listing. `currency` and `exponent` are the
+/// zones' asset.
+#[wasm_bindgen(js_name = legacyShippingOption)]
+pub fn legacy_shipping_option_js(
+    zones: JsValue,
+    currency: &str,
+    exponent: f64,
+    option_id: &str,
+    label: &str,
+) -> Result<JsValue, String> {
+    if exponent.fract() != 0.0 || !(0.0..=18.0).contains(&exponent) {
+        return Err("Validation Error: exponent must be an integer from 0 to 18".into());
+    }
+    let exponent = exponent as i64;
+    let asset = PubkyMarketMoney {
+        amount_minor: 0,
+        currency: currency.to_string(),
+        exponent,
+    };
+    let option = legacy_shipping_option(&zones_from(zones)?, &asset, option_id, label)?;
+    to_value(&option).map_err(|e| e.to_string())
+}
+
+/// A JS number that must be a safe integer, or `INVALID_QUANTITY`.
+fn units_from(value: f64) -> Result<i64, String> {
+    if value.fract() != 0.0
+        || !(-9_007_199_254_740_991.0..=9_007_199_254_740_991.0).contains(&value)
+    {
+        return Err(PubkyMarketShippingQuoteError::InvalidQuantity
+            .code()
+            .to_string());
+    }
+    Ok(value as i64)
+}
+
 /// Builds the `pubky://` URI of a Market record exactly as the per-kind
 /// builders of `pubky-app-specs` do: the owner and id are concatenated
 /// without validation, an empty id builds the collection path, and a missing
 /// id is an error.
 ///
 /// `kind` is one of `shop`, `listing`, `drop`, `review`, `review_response`,
-/// `watchlist`, `order_receipt`, `attestor_profile`, `attestor_annotation`.
+/// `watchlist`, `order_receipt`, `shipping_profile`, `attestor_profile`,
+/// `attestor_annotation`.
 /// Singletons (`shop`, `watchlist`, `attestor_profile`) ignore `id`; every
-/// other kind takes the listing, drop, review or receipt id, or the
+/// other kind takes the listing, drop, review, receipt or shipping profile id, or the
 /// annotation's order reference.
 #[wasm_bindgen(js_name = buildMarketUri)]
 pub fn build_market_uri(
@@ -240,6 +364,7 @@ pub fn build_market_uri(
         "review" => with_id(marketplace_review_uri_builder),
         "review_response" => with_id(review_response_uri_builder),
         "order_receipt" => with_id(order_receipt_uri_builder),
+        "shipping_profile" => with_id(shipping_profile_uri_builder),
         "attestor_annotation" => with_id(attestor_annotation_uri_builder),
         other => Err(format!(
             "Validation Error: unknown Market URI kind '{other}'"
