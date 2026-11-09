@@ -1,6 +1,6 @@
 {
   "name": "pubky-market-specs",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Pubky Market commerce data formats: shops, listings, drops, reviews, receipts, watchlists and attestations",
   "license": "MIT",
   "type": "module",
