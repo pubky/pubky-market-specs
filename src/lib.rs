@@ -87,8 +87,8 @@ pub use models::review_response::PubkyMarketReviewResponse;
 pub use models::shipping_profile::{
     legacy_shipping_option, quote_all_shipping_rates, quote_shipping,
     shipping_zone_for_destination, validate_shipping_zones, PubkyMarketShippingProfile,
-    PubkyMarketShippingQuote, PubkyMarketShippingQuoteError, PubkyMarketShippingRate,
-    PubkyMarketShippingZone, MAX_SHIPPING_GROUP_UNITS,
+    PubkyMarketShippingProfileSource, PubkyMarketShippingQuote, PubkyMarketShippingQuoteError,
+    PubkyMarketShippingRate, PubkyMarketShippingZone, MAX_SHIPPING_GROUP_UNITS,
 };
 pub use models::shop::PubkyMarketShop;
 pub use models::watchlist::{
