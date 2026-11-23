@@ -134,6 +134,9 @@ pub fn build_review(owner_pubky: &str, review: JsValue) -> Result<ReviewResult, 
     let review_id = review.create_id();
     review.review_id = review_id.clone();
     review.validate(Some(&review_id))?;
+    if owner.eq_ignore_ascii_case(&review.subject_pubky) {
+        return Err("Validation Error: subjectPubky must not equal the review path's owner".into());
+    }
 
     let path = PubkyMarketReview::create_path(&review_id);
     let meta = Meta::from_object(Some(&review_id), &owner, path);

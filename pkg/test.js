@@ -572,6 +572,31 @@ describe("pubky-market-specs", () => {
       assert.strictEqual(sellerRatingKey(reviewA), sellerRatingKey(reviewB));
     });
 
+    it("should refuse a review whose subject is its owner, in both roles", () => {
+      const review = attestedReview(ITEM_A, "");
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        assert.throws(
+          () => buildReview(RIO, { ...review, role, ownerPubky: RIO }),
+          /subjectPubky must not equal ownerPubky/
+        );
+        assert.throws(
+          () => buildReview(RIO, { ...review, role }),
+          /subjectPubky must not equal the review path's owner/
+        );
+      }
+    });
+
+    it("should build a seller's review of a buyer on the seller's own listing", () => {
+      const review = attestedReview(ITEM_A, "");
+      const { review: built } = buildReview(RIO, {
+        ...review,
+        ownerPubky: RIO,
+        subjectPubky: OTTO,
+        role: "seller_reviewing_buyer",
+      });
+      assert.strictEqual(built.toJson().subjectPubky, OTTO);
+    });
+
     it("should refuse to key a review whose attestation does not verify", () => {
       const review = attestedReview(ITEM_A, "");
       review.listingId = ITEM_B;

@@ -50,6 +50,21 @@ impl PubkyMarketObject {
             Resource::AttestorAnnotation(_) => Ok(PubkyMarketObject::AttestorAnnotation(
                 PubkyMarketAttestorAnnotation::from_verified_json(uri, blob)?,
             )),
+            resource @ Resource::MarketplaceReview(_) => {
+                let object = Self::from_resource(&resource, blob)?;
+                if let PubkyMarketObject::MarketplaceReview(review) = &object {
+                    if parsed_uri
+                        .user_id
+                        .eq_ignore_ascii_case(&review.subject_pubky)
+                    {
+                        return Err(
+                            "Validation Error: subjectPubky must not equal the review path's owner"
+                                .into(),
+                        );
+                    }
+                }
+                Ok(object)
+            }
             resource => Self::from_resource(&resource, blob),
         }
     }
@@ -302,6 +317,43 @@ mod tests {
             }
             other => panic!("Expected a MarketplaceReview object, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_import_review_rejects_self_review_by_path_owner() {
+        use crate::traits::HashId;
+
+        let reviewer = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo";
+        let seller = "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy";
+        let mut review = crate::PubkyMarketReview::new(
+            reviewer.to_string(),
+            1,
+            "2025-01-01T00:00:00Z".to_string(),
+            "2025-01-01T00:00:00Z".to_string(),
+            String::new(),
+            seller.to_string(),
+            seller.to_string(),
+            "0032SSN7Q4EVG".to_string(),
+            crate::PubkyMarketReviewRole::BuyerReviewingSeller,
+            crate::PubkyMarketReviewRatings {
+                overall: 5,
+                item_accuracy: None,
+                shipping: None,
+                communication: None,
+            },
+            "Great seller.".to_string(),
+            "a".repeat(64),
+        );
+        review.review_id = review.create_id();
+        let review_json = serde_json::to_string(&review).unwrap();
+
+        let seller_uri = marketplace_review_uri_builder(seller.into(), review.review_id.clone());
+        let error = PubkyMarketObject::from_uri(seller_uri, review_json.as_bytes()).unwrap_err();
+        assert!(error.contains("subjectPubky must not equal the review path's owner"));
+
+        let reviewer_uri =
+            marketplace_review_uri_builder(reviewer.into(), review.review_id.clone());
+        assert!(PubkyMarketObject::from_uri(reviewer_uri, review_json.as_bytes()).is_ok());
     }
 
     #[test]
