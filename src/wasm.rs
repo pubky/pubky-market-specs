@@ -134,7 +134,7 @@ pub fn build_review(owner_pubky: &str, review: JsValue) -> Result<ReviewResult, 
     let review_id = review.create_id();
     review.review_id = review_id.clone();
     review.validate(Some(&review_id))?;
-    if owner.eq_ignore_ascii_case(&review.subject_pubky) {
+    if crate::models::marketplace::same_pubky(&owner, &review.subject_pubky) {
         return Err("Validation Error: subjectPubky must not equal the review path's owner".into());
     }
 

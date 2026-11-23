@@ -50,20 +50,15 @@ impl PubkyMarketObject {
             Resource::AttestorAnnotation(_) => Ok(PubkyMarketObject::AttestorAnnotation(
                 PubkyMarketAttestorAnnotation::from_verified_json(uri, blob)?,
             )),
-            resource @ Resource::MarketplaceReview(_) => {
-                let object = Self::from_resource(&resource, blob)?;
-                if let PubkyMarketObject::MarketplaceReview(review) = &object {
-                    if parsed_uri
-                        .user_id
-                        .eq_ignore_ascii_case(&review.subject_pubky)
-                    {
-                        return Err(
-                            "Validation Error: subjectPubky must not equal the review path's owner"
-                                .into(),
-                        );
-                    }
+            Resource::MarketplaceReview(review_id) => {
+                let review = <PubkyMarketReview as Validatable>::try_from(blob, &review_id)?;
+                if marketplace::same_pubky(&parsed_uri.user_id, &review.subject_pubky) {
+                    return Err(
+                        "Validation Error: subjectPubky must not equal the review path's owner"
+                            .into(),
+                    );
                 }
-                Ok(object)
+                Ok(PubkyMarketObject::MarketplaceReview(review))
             }
             resource => Self::from_resource(&resource, blob),
         }
@@ -71,6 +66,8 @@ impl PubkyMarketObject {
 
     /// Given a Resource and a blob (raw data from the homeserver),
     /// this function returns the fully formed PubkyMarketObject.
+    /// A review here is checked against its `ownerPubky` field only; the check
+    /// of `subjectPubky` against the path's owner needs the URI, in `from_uri`.
     pub fn from_resource(resource: &Resource, blob: &[u8]) -> Result<Self, String> {
         match resource {
             Resource::Shop => {
@@ -354,6 +351,92 @@ mod tests {
         let reviewer_uri =
             marketplace_review_uri_builder(reviewer.into(), review.review_id.clone());
         assert!(PubkyMarketObject::from_uri(reviewer_uri, review_json.as_bytes()).is_ok());
+    }
+
+    const REVIEWER: &str = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo";
+    /// `REVIEWER` with its last character's unused bits changed: the same key.
+    const REVIEWER_ALIAS: &str = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdt";
+    /// `REVIEWER` with its last character's data bit changed: another key.
+    const REVIEWER_NEIGHBOUR: &str = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdy";
+    const SELLER: &str = "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy";
+
+    fn import_review(
+        path_owner: &str,
+        owner: &str,
+        subject: &str,
+        listing_owner: &str,
+        role: crate::PubkyMarketReviewRole,
+    ) -> Result<PubkyMarketObject, String> {
+        use crate::traits::HashId;
+
+        let mut review = crate::PubkyMarketReview::new(
+            owner.to_string(),
+            1,
+            "2025-01-01T00:00:00Z".to_string(),
+            "2025-01-01T00:00:00Z".to_string(),
+            String::new(),
+            subject.to_string(),
+            listing_owner.to_string(),
+            "0032SSN7Q4EVG".to_string(),
+            role,
+            crate::PubkyMarketReviewRatings {
+                overall: 5,
+                item_accuracy: None,
+                shipping: None,
+                communication: None,
+            },
+            "Smooth trade.".to_string(),
+            "a".repeat(64),
+        );
+        review.review_id = review.create_id();
+        let review_json = serde_json::to_string(&review).unwrap();
+        let uri = marketplace_review_uri_builder(path_owner.into(), review.review_id.clone());
+        PubkyMarketObject::from_uri(uri, review_json.as_bytes())
+    }
+
+    #[test]
+    fn test_import_review_rejects_path_owner_spelled_differently() {
+        for role in [
+            crate::PubkyMarketReviewRole::BuyerReviewingSeller,
+            crate::PubkyMarketReviewRole::SellerReviewingBuyer,
+        ] {
+            let error = import_review(REVIEWER, SELLER, REVIEWER_ALIAS, SELLER, role).unwrap_err();
+            assert!(
+                error.contains("subjectPubky must not equal the review path's owner"),
+                "unexpected error for {}: {error}",
+                role.as_str()
+            );
+            let error =
+                import_review(REVIEWER, REVIEWER, REVIEWER_ALIAS, SELLER, role).unwrap_err();
+            assert!(
+                error.contains("subjectPubky must not equal ownerPubky"),
+                "unexpected error for {}: {error}",
+                role.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn test_import_review_accepts_seller_reviewing_buyer() {
+        let imported = import_review(
+            SELLER,
+            SELLER,
+            REVIEWER,
+            SELLER,
+            crate::PubkyMarketReviewRole::SellerReviewingBuyer,
+        );
+        assert!(imported.is_ok(), "{imported:?}");
+    }
+
+    #[test]
+    fn test_import_review_accepts_subject_one_bit_from_path_owner() {
+        for role in [
+            crate::PubkyMarketReviewRole::BuyerReviewingSeller,
+            crate::PubkyMarketReviewRole::SellerReviewingBuyer,
+        ] {
+            let imported = import_review(REVIEWER, REVIEWER, REVIEWER_NEIGHBOUR, SELLER, role);
+            assert!(imported.is_ok(), "{}: {imported:?}", role.as_str());
+        }
     }
 
     #[test]

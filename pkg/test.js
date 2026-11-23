@@ -586,6 +586,37 @@ describe("pubky-market-specs", () => {
       }
     });
 
+    it("should refuse a self-review whose subject spells the owner's key differently", () => {
+      // RIO with its last character's unused bits changed: the same key.
+      const rioAlias = RIO.slice(0, -1) + "t";
+      const review = attestedReview(ITEM_A, "");
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        assert.throws(
+          () => buildReview(RIO, { ...review, role, ownerPubky: RIO, subjectPubky: rioAlias }),
+          /subjectPubky must not equal ownerPubky/
+        );
+        assert.throws(
+          () => buildReview(RIO, { ...review, role, ownerPubky: OTTO, subjectPubky: rioAlias }),
+          /subjectPubky must not equal the review path's owner/
+        );
+      }
+    });
+
+    it("should build a review whose subject is one bit away from the owner's key", () => {
+      // RIO with its last character's data bit changed: another key.
+      const rioNeighbour = RIO.slice(0, -1) + "y";
+      const review = attestedReview(ITEM_A, "");
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        const { review: built } = buildReview(RIO, {
+          ...review,
+          role,
+          ownerPubky: RIO,
+          subjectPubky: rioNeighbour,
+        });
+        assert.strictEqual(built.toJson().subjectPubky, rioNeighbour);
+      }
+    });
+
     it("should build a seller's review of a buyer on the seller's own listing", () => {
       const review = attestedReview(ITEM_A, "");
       const { review: built } = buildReview(RIO, {
