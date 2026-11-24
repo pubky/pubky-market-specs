@@ -232,7 +232,7 @@ A shipping group is the lines of one seller order that share one profile, or one
 
 **Validation Notes:**
 
-- A review whose `subjectPubky` equals its `ownerPubky` (or, where the record is read from or built for an owner's path, that owner) is rejected in both roles. Keys are compared by their decoded 32 bytes, so a spelling that differs only in the last character's unused bits is the same key. The reviewer may own the reviewed listing (seller reviewing a buyer).
+- A review whose `subjectPubky` equals its `ownerPubky` (or, where the record is read from or built for an owner's path, that owner) is rejected in both roles. Keys are compared by their decoded 32 bytes, so a spelling that differs only in the last character's unused bits is the same key. The reviewer may own the reviewed listing (seller reviewing a buyer). This rule is applied by `PubkyMarketReview::validate()`, `PubkyMarketPurchaseAttestation::verify_binding` (and therefore `verify_for_review`, `PubkyMarketReview::item_count_key()` and `seller_rating_key()`) and the wasm helpers `verifyPurchaseAttestation`, `itemCountKey`, `sellerRatingKey`.
 - The `review_id` is a **Hash ID** derived from `"{listing_uri}:{subject_pubky}:{role}:{orderRef}"`, where `listing_uri` is `pubky://<listingOwnerPubky>/pub/pubky.app/marketplace/v1/listings/<listingId>`. Each attested order therefore gets its own review, and a second order of the same listing never overwrites the first.
 - A record without `orderRef` (written before per-order reviews) keeps the three-part input `"{listing_uri}:{subject_pubky}:{role}"` and stays valid.
 - **Item counting key.** A verified review counts once per attested order, role and reviewed listing: `item_count_key = (iss, order_ref, role, listingOwnerPubky, listingId)`, with `iss` and `order_ref` taken from the attestation. Items of one order therefore count separately. When a record with `orderRef` and one without it carry the same key, the record with `orderRef` counts; the other is left out of counts, averages and review lists. Implementations can use `PubkyMarketReview::item_count_key()` (wasm `itemCountKey`) and `PubkyMarketReview::is_order_scoped()`.
@@ -275,7 +275,7 @@ A shipping group is the lines of one seller order that share one profile, or one
 3. Check bindings against the review record: `sub == ownerPubky`, `cpk == subjectPubky`, `listing` matches, `role` matches, and `order_ref == orderRef` when the record carries `orderRef`. Refuse the review when `subjectPubky` names the same key as `ownerPubky`, in any spelling.
 4. Accept as **verified** only if `iss` is on your own attestor trust list. The signature proves key possession, never legitimacy.
 
-`PubkyMarketPurchaseAttestation::verify_for_review` and the wasm helpers `verifyPurchaseAttestation`, `itemCountKey` and `sellerRatingKey` run steps 1-3, including the subject and owner rule. Trust in `iss` remains the caller's policy.
+`PubkyMarketPurchaseAttestation::verify_binding` applies the subject and owner rule, so `verify_for_review`, `PubkyMarketReview::item_count_key()`, `PubkyMarketReview::seller_rating_key()` and the wasm helpers `verifyPurchaseAttestation`, `itemCountKey` and `sellerRatingKey` all refuse a self-review. `PubkyMarketPurchaseAttestation::verify_for_review` and the wasm helpers run steps 1-3. Trust in `iss` remains the caller's policy.
 
 Exact amounts, timestamps finer than a day, addresses, payment identifiers, and bearer material are prohibited in claims.
 

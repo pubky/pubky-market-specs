@@ -212,7 +212,8 @@ impl PubkyMarketReview {
     /// `order_ref` come from the embedded attestation, which must bind this
     /// record; a record without `orderRef` keys by the attestation's
     /// `order_ref`, so it shares its key with a scoped twin of the same item.
-    /// Signature verification and trust in `iss` stay with the caller.
+    /// It refuses a self-review through `verify_binding`. Signature verification
+    /// and trust in `iss` stay with the caller.
     pub fn item_count_key(
         &self,
         attestation: &PubkyMarketPurchaseAttestation,

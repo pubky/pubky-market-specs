@@ -15,9 +15,14 @@
 //!    no discovery: the `iss` claim is a pubky, i.e. the z-base-32 encoding
 //!    of the Ed25519 verification key itself.
 //! 3. Check the claim bindings against the review record with
-//!    [`PubkyMarketPurchaseAttestation::verify_binding`]: `sub` must equal the
-//!    record's `ownerPubky`, `cpk` its `subjectPubky`, `listing` the
-//!    canonical listing URI, and `role` the record's role.
+//!    [`PubkyMarketPurchaseAttestation::verify_binding`]: first refuse a review
+//!    whose `subjectPubky` names the same key as its `ownerPubky`, in any
+//!    spelling, then require `sub` to equal the record's `ownerPubky`, `cpk` its
+//!    `subjectPubky`, `listing` the canonical listing URI, and `role` the record's
+//!    role. [`PubkyMarketPurchaseAttestation::verify_for_review`],
+//!    [`PubkyMarketReview::item_count_key`] and
+//!    [`PubkyMarketReview::seller_rating_key`] apply this rule through
+//!    `verify_binding`.
 //! 4. Accept as *verified* only when `iss` is on the verifier's own attestor
 //!    trust list. The signature proves key possession, never legitimacy.
 //!
@@ -198,11 +203,15 @@ impl PubkyMarketPurchaseAttestation {
             .map_err(|_| "Attestation Error: signature verification failed".to_string())
     }
 
-    /// Checks that the claims cover exactly this review record: `sub` is the
-    /// record owner, `cpk` the subject, `listing` the canonical listing URI,
-    /// and `role` the record role. Any mismatch means the attestation does
-    /// not cover the review.
+    /// First refuses a review whose subject is its owner (the same key in any
+    /// spelling), then checks that the claims cover exactly this review record:
+    /// `sub` is the record owner, `cpk` the subject, `listing` the canonical
+    /// listing URI, and `role` the record role. Any mismatch means the
+    /// attestation does not cover the review.
     pub fn verify_binding(&self, review: &PubkyMarketReview) -> Result<(), String> {
+        if same_pubky(&review.owner_pubky, &review.subject_pubky) {
+            return Err("Validation Error: subjectPubky must not equal ownerPubky".into());
+        }
         if self.claims.sub != review.owner_pubky {
             return Err("Attestation Error: sub does not match the review owner".into());
         }
@@ -244,14 +253,11 @@ impl PubkyMarketPurchaseAttestation {
         price_weight(self.claims.price_decade.as_deref()).unwrap_or(MIN_PRICE_WEIGHT)
     }
 
-    /// The full local verification recipe for one review record: refuse a
-    /// review whose subject is its owner (the same key in any spelling), parse
-    /// the record's embedded attestation, verify the signature, and check the
-    /// bindings. Trust in `iss` remains the caller's policy decision.
+    /// The full local verification recipe for one review record: parse the
+    /// record's embedded attestation, verify the signature, and check the
+    /// bindings, including the subject and owner rule applied by
+    /// [`Self::verify_binding`]. Trust in `iss` remains the caller's policy.
     pub fn verify_for_review(review: &PubkyMarketReview) -> Result<Self, String> {
-        if same_pubky(&review.owner_pubky, &review.subject_pubky) {
-            return Err("Validation Error: subjectPubky must not equal ownerPubky".into());
-        }
         let attestation = Self::parse(&review.eligibility_attestation)?;
         attestation.verify_signature()?;
         attestation.verify_binding(review)?;
@@ -526,12 +532,14 @@ mod tests {
     }
 
     fn assert_self_subject_refused(review: &PubkyMarketReview) {
+        let attestation =
+            PubkyMarketPurchaseAttestation::parse(&review.eligibility_attestation).unwrap();
+        attestation.verify_signature().unwrap();
         let outcomes = [
             PubkyMarketPurchaseAttestation::verify_for_review(review).map(|_| ()),
-            PubkyMarketPurchaseAttestation::verify_for_review(review)
-                .and_then(|attestation| review.item_count_key(&attestation).map(|_| ())),
-            PubkyMarketPurchaseAttestation::verify_for_review(review)
-                .and_then(|attestation| review.seller_rating_key(&attestation).map(|_| ())),
+            attestation.verify_binding(review),
+            review.item_count_key(&attestation).map(|_| ()),
+            review.seller_rating_key(&attestation).map(|_| ()),
         ];
         for outcome in outcomes {
             let error = outcome.unwrap_err();
@@ -543,7 +551,7 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_for_review_refuses_canonical_self_subject() {
+    fn test_binding_refuses_canonical_self_subject() {
         let key = attestor_key();
         let iss = attestor_pubky(&key);
         for (owner, listing_owner, role) in [
@@ -560,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_for_review_refuses_alias_self_subject() {
+    fn test_binding_refuses_alias_self_subject() {
         let key = attestor_key();
         let iss = attestor_pubky(&key);
         for (owner, subject, listing_owner, role) in [
@@ -614,9 +622,13 @@ mod tests {
             (buyer_review, "buyer_reviewing_seller"),
             (seller_review, "seller_reviewing_buyer"),
         ] {
-            let attestation = PubkyMarketPurchaseAttestation::verify_for_review(&review).unwrap();
+            let verified = PubkyMarketPurchaseAttestation::verify_for_review(&review).unwrap();
+            let attestation =
+                PubkyMarketPurchaseAttestation::parse(&review.eligibility_attestation).unwrap();
+            attestation.verify_binding(&review).unwrap();
             let item_key = review.item_count_key(&attestation).unwrap();
             let seller_key = review.seller_rating_key(&attestation).unwrap();
+            assert_eq!(verified, attestation);
             assert_eq!(item_key.role, role);
             assert_eq!(seller_key.role, role);
             assert_eq!(seller_key, item_key.seller_rating_key());
