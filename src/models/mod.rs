@@ -39,7 +39,8 @@ pub enum PubkyMarketObject {
 impl PubkyMarketObject {
     /// Given a URI and a blob (raw data from the homeserver),
     /// this function returns the fully formed PubkyMarketObject.
-    /// Attestor records are verified against the URI's owner here.
+    /// Attestor records are verified against the URI's owner here. A review
+    /// whose `subjectPubky` names the path owner's key is refused, in any spelling.
     pub fn from_uri<S: AsRef<str>>(uri: S, blob: &[u8]) -> Result<Self, String> {
         let uri = uri.as_ref();
         let parsed_uri = ParsedUri::try_from(uri)?;

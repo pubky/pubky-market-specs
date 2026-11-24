@@ -27,7 +27,7 @@
 
 use crate::{
     listing_uri_builder,
-    models::marketplace::{validate_hex_hash, validate_pubky, MAX_SAFE_INTEGER},
+    models::marketplace::{same_pubky, validate_hex_hash, validate_pubky, MAX_SAFE_INTEGER},
     models::marketplace_review::PubkyMarketReview,
     models::marketplace_weight::{parse_log_decade, price_weight, MIN_PRICE_WEIGHT},
     traits::Validatable,
@@ -244,10 +244,14 @@ impl PubkyMarketPurchaseAttestation {
         price_weight(self.claims.price_decade.as_deref()).unwrap_or(MIN_PRICE_WEIGHT)
     }
 
-    /// The full local verification recipe for one review record: parse the
-    /// record's embedded attestation, verify the signature, and check the
+    /// The full local verification recipe for one review record: refuse a
+    /// review whose subject is its owner (the same key in any spelling), parse
+    /// the record's embedded attestation, verify the signature, and check the
     /// bindings. Trust in `iss` remains the caller's policy decision.
     pub fn verify_for_review(review: &PubkyMarketReview) -> Result<Self, String> {
+        if same_pubky(&review.owner_pubky, &review.subject_pubky) {
+            return Err("Validation Error: subjectPubky must not equal ownerPubky".into());
+        }
         let attestation = Self::parse(&review.eligibility_attestation)?;
         attestation.verify_signature()?;
         attestation.verify_binding(review)?;
@@ -434,7 +438,9 @@ mod tests {
     use ed25519_dalek::{Signer, SigningKey};
 
     const REVIEWER: &str = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo";
+    const REVIEWER_ALIAS: &str = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdt";
     const SELLER: &str = "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy";
+    const SELLER_ALIAS: &str = "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jb";
 
     fn attestor_key() -> SigningKey {
         SigningKey::from_bytes(&[7u8; 32])
@@ -494,6 +500,127 @@ mod tests {
         );
         review.review_id = review.create_id();
         review
+    }
+
+    fn signed_review(
+        key: &SigningKey,
+        mut claims: PubkyMarketPurchaseAttestationClaims,
+        owner: &str,
+        subject: &str,
+        listing_owner: &str,
+        role: PubkyMarketReviewRole,
+    ) -> PubkyMarketReview {
+        claims.sub = owner.to_string();
+        claims.cpk = subject.to_string();
+        claims.role = role.as_str().to_string();
+        claims.listing =
+            crate::listing_uri_builder(listing_owner.to_string(), "0032SSN7Q4EVG".to_string());
+        let mut review = matching_review(&sign(&claims, key));
+        review.owner_pubky = owner.to_string();
+        review.subject_pubky = subject.to_string();
+        review.listing_owner_pubky = listing_owner.to_string();
+        review.role = role;
+        review.order_ref = Some(claims.order_ref.clone());
+        review.review_id = review.create_id();
+        review
+    }
+
+    fn assert_self_subject_refused(review: &PubkyMarketReview) {
+        let outcomes = [
+            PubkyMarketPurchaseAttestation::verify_for_review(review).map(|_| ()),
+            PubkyMarketPurchaseAttestation::verify_for_review(review)
+                .and_then(|attestation| review.item_count_key(&attestation).map(|_| ())),
+            PubkyMarketPurchaseAttestation::verify_for_review(review)
+                .and_then(|attestation| review.seller_rating_key(&attestation).map(|_| ())),
+        ];
+        for outcome in outcomes {
+            let error = outcome.unwrap_err();
+            assert!(
+                error.contains("subjectPubky must not equal ownerPubky"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_verify_for_review_refuses_canonical_self_subject() {
+        let key = attestor_key();
+        let iss = attestor_pubky(&key);
+        for (owner, listing_owner, role) in [
+            (
+                REVIEWER,
+                SELLER,
+                PubkyMarketReviewRole::BuyerReviewingSeller,
+            ),
+            (SELLER, SELLER, PubkyMarketReviewRole::SellerReviewingBuyer),
+        ] {
+            let review = signed_review(&key, valid_claims(&iss), owner, owner, listing_owner, role);
+            assert_self_subject_refused(&review);
+        }
+    }
+
+    #[test]
+    fn test_verify_for_review_refuses_alias_self_subject() {
+        let key = attestor_key();
+        let iss = attestor_pubky(&key);
+        for (owner, subject, listing_owner, role) in [
+            (
+                REVIEWER,
+                REVIEWER_ALIAS,
+                SELLER,
+                PubkyMarketReviewRole::BuyerReviewingSeller,
+            ),
+            (
+                SELLER,
+                SELLER_ALIAS,
+                SELLER,
+                PubkyMarketReviewRole::SellerReviewingBuyer,
+            ),
+        ] {
+            let review = signed_review(
+                &key,
+                valid_claims(&iss),
+                owner,
+                subject,
+                listing_owner,
+                role,
+            );
+            assert_self_subject_refused(&review);
+        }
+    }
+
+    #[test]
+    fn test_verify_for_review_accepts_distinct_owner_and_subject() {
+        let key = attestor_key();
+        let iss = attestor_pubky(&key);
+        let buyer_review = signed_review(
+            &key,
+            valid_claims(&iss),
+            REVIEWER,
+            SELLER,
+            SELLER,
+            PubkyMarketReviewRole::BuyerReviewingSeller,
+        );
+        let seller_review = signed_review(
+            &key,
+            valid_claims(&iss),
+            SELLER,
+            REVIEWER,
+            SELLER,
+            PubkyMarketReviewRole::SellerReviewingBuyer,
+        );
+
+        for (review, role) in [
+            (buyer_review, "buyer_reviewing_seller"),
+            (seller_review, "seller_reviewing_buyer"),
+        ] {
+            let attestation = PubkyMarketPurchaseAttestation::verify_for_review(&review).unwrap();
+            let item_key = review.item_count_key(&attestation).unwrap();
+            let seller_key = review.seller_rating_key(&attestation).unwrap();
+            assert_eq!(item_key.role, role);
+            assert_eq!(seller_key.role, role);
+            assert_eq!(seller_key, item_key.seller_rating_key());
+        }
     }
 
     #[test]

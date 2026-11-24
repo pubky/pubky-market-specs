@@ -272,8 +272,10 @@ A shipping group is the lines of one seller order that share one profile, or one
 
 1. Parse the compact JWS; reject unknown header fields, unknown claims, and unknown versions.
 2. Decode `iss` from z-base-32 — that *is* the Ed25519 verification key. Verify the signature over `base64url(header) || '.' || base64url(claims)`.
-3. Check bindings against the review record: `sub == ownerPubky`, `cpk == subjectPubky`, `listing` matches, `role` matches, and `order_ref == orderRef` when the record carries `orderRef`.
+3. Check bindings against the review record: `sub == ownerPubky`, `cpk == subjectPubky`, `listing` matches, `role` matches, and `order_ref == orderRef` when the record carries `orderRef`. Refuse the review when `subjectPubky` names the same key as `ownerPubky`, in any spelling.
 4. Accept as **verified** only if `iss` is on your own attestor trust list. The signature proves key possession, never legitimacy.
+
+`PubkyMarketPurchaseAttestation::verify_for_review` and the wasm helpers `verifyPurchaseAttestation`, `itemCountKey` and `sellerRatingKey` run steps 1-3, including the subject and owner rule. Trust in `iss` remains the caller's policy.
 
 Exact amounts, timestamps finer than a day, addresses, payment identifiers, and bearer material are prohibited in claims.
 

@@ -168,7 +168,8 @@ pub(crate) fn validate_pubky(value: &str, field: &str) -> Result<(), String> {
 
 /// Whether two pubky strings name the same key. The last z-base-32 character
 /// carries four unused bits, so several spellings decode to one key: decoded
-/// keys are compared, and a string that does not decode is compared as written.
+/// keys are compared. Callers pass pubkys that already passed `validate_pubky`;
+/// the as-written comparison is only a fallback for strings that do not decode.
 pub(crate) fn same_pubky(a: &str, b: &str) -> bool {
     match (zbase32_decode_pubky(a), zbase32_decode_pubky(b)) {
         (Some(a_key), Some(b_key)) => a_key == b_key,
