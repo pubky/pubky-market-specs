@@ -1,4 +1,7 @@
-use crate::{traits::Validatable, APP_PATH, MARKETPLACE_PATH, PROTOCOL, PUBLIC_PATH};
+use crate::{
+    models::marketplace_attestation::zbase32_decode_pubky, traits::Validatable, APP_PATH,
+    MARKETPLACE_PATH, PROTOCOL, PUBLIC_PATH,
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "wasm32")]
@@ -161,6 +164,19 @@ pub(crate) fn validate_pubky(value: &str, field: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Whether two pubky strings name the same key. The last z-base-32 character
+/// carries four unused bits, so several spellings decode to one key: decoded
+/// keys are compared. Callers may pass raw record fields; a string that does
+/// not decode is compared as written, which is safe because such a record
+/// also fails the `sub`/`cpk` binding against the validated claims, and
+/// `validate()` rejects it.
+pub(crate) fn same_pubky(a: &str, b: &str) -> bool {
+    match (zbase32_decode_pubky(a), zbase32_decode_pubky(b)) {
+        (Some(a_key), Some(b_key)) => a_key == b_key,
+        _ => a == b,
+    }
 }
 
 /// Validates a lowercase hyphenated UUID (`8-4-4-4-12` lowercase hex),
@@ -410,6 +426,24 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_same_pubky_compares_keys() {
+        let key = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdo";
+        let alias = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdt";
+        let neighbour = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdy";
+        assert!(same_pubky(key, key));
+        assert!(same_pubky(key, alias));
+        assert!(same_pubky(alias, key));
+        assert!(!same_pubky(key, neighbour));
+        assert!(!same_pubky(neighbour, key));
+        assert!(!same_pubky(
+            key,
+            "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy"
+        ));
+        assert!(same_pubky("short", "short"));
+        assert!(!same_pubky("short", key));
+    }
 
     #[test]
     fn test_parse_rfc3339_epoch() {

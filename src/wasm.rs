@@ -124,7 +124,8 @@ pub fn build_listing(owner_pubky: &str, listing: JsValue) -> Result<ListingResul
 
 /// Builds a review record. The hash ID is derived from the reviewed listing
 /// URI, subject, role and (when present) `orderRef`, and written into the
-/// record's `reviewId`.
+/// record's `reviewId`. Throws when `subjectPubky` names the same key as the
+/// record's `ownerPubky` or as `owner_pubky`, in any spelling.
 #[wasm_bindgen(js_name = buildReview)]
 pub fn build_review(owner_pubky: &str, review: JsValue) -> Result<ReviewResult, String> {
     let owner = owner(owner_pubky)?;
@@ -134,6 +135,9 @@ pub fn build_review(owner_pubky: &str, review: JsValue) -> Result<ReviewResult, 
     let review_id = review.create_id();
     review.review_id = review_id.clone();
     review.validate(Some(&review_id))?;
+    if crate::models::marketplace::same_pubky(&owner, &review.subject_pubky) {
+        return Err("Validation Error: subjectPubky must not equal the review path's owner".into());
+    }
 
     let path = PubkyMarketReview::create_path(&review_id);
     let meta = Meta::from_object(Some(&review_id), &owner, path);
@@ -422,11 +426,12 @@ pub fn parse_purchase_attestation(jws: &str) -> Result<JsValue, String> {
     to_value(&attestation.claims).map_err(|e| e.to_string())
 }
 
-/// The full local verification recipe for one review record: parses the
-/// record (camelCase JSON) against the spec, parses its embedded
-/// attestation, verifies the Ed25519 signature against the `iss` pubky, and
-/// checks the claim bindings. Returns the verified claims with wire-format
-/// snake_case keys. Whether `iss` is a *trusted* attestor remains the caller's policy decision.
+/// The full local verification recipe for one review record: deserializes the
+/// record (camelCase JSON), parses its embedded attestation, verifies the
+/// Ed25519 signature against the `iss` pubky, and checks the claim bindings,
+/// which first refuse a self-review (the same key in any spelling). Returns
+/// the verified claims with wire-format snake_case keys. Whether `iss` is a
+/// *trusted* attestor remains the caller's policy decision.
 #[wasm_bindgen(js_name = verifyPurchaseAttestation)]
 pub fn verify_purchase_attestation(review: JsValue) -> Result<JsValue, String> {
     let review: PubkyMarketReview = from_value(review).map_err(|e| e.to_string())?;
@@ -435,9 +440,10 @@ pub fn verify_purchase_attestation(review: JsValue) -> Result<JsValue, String> {
 }
 
 /// The item counting key of one review record, `iss:order_ref:role:listing_owner:listing_id`:
-/// runs the full verification recipe (`verifyPurchaseAttestation`) on the
-/// record (camelCase JSON) and keys it by its attested order and listing.
-/// Whether `iss` is a trusted attestor remains the caller's policy decision.
+/// runs the full verification recipe (`verifyPurchaseAttestation`), which
+/// refuses a self-review, on the record (camelCase JSON) and keys it by its
+/// attested order and listing. Whether `iss` is a trusted attestor remains the
+/// caller's policy decision.
 #[wasm_bindgen(js_name = itemCountKey)]
 pub fn item_count_key(review: JsValue) -> Result<String, String> {
     let review: PubkyMarketReview = from_value(review).map_err(|e| e.to_string())?;
@@ -446,8 +452,9 @@ pub fn item_count_key(review: JsValue) -> Result<String, String> {
 }
 
 /// The seller rating key of one review record, `iss:order_ref:role`, after
-/// the same verification as `itemCountKey`. Every item review of one order
-/// shares it, so `shipping` and `communication` count once per order.
+/// the same verification as `itemCountKey`, which refuses a self-review.
+/// Every item review of one order shares it, so `shipping` and `communication`
+/// count once per order.
 #[wasm_bindgen(js_name = sellerRatingKey)]
 pub fn seller_rating_key(review: JsValue) -> Result<String, String> {
     let review: PubkyMarketReview = from_value(review).map_err(|e| e.to_string())?;

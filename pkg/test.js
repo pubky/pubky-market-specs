@@ -518,6 +518,13 @@ describe("pubky-market-specs", () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
     const iss = zbase32(Buffer.from(publicKey.export({ format: "jwk" }).x, "base64url"));
 
+    const signAttestation = (claims) => {
+      const header = b64u(JSON.stringify({ alg: "EdDSA", typ: "pubky-purchase-attestation+v1" }));
+      const payload = b64u(JSON.stringify(claims));
+      const signature = cryptoSign(null, Buffer.from(`${header}.${payload}`), privateKey);
+      return `${header}.${payload}.${b64u(signature)}`;
+    };
+
     const attestedReview = (listingId, text, priceDecadeClaim) => {
       const claims = {
         v: 1,
@@ -531,9 +538,6 @@ describe("pubky-market-specs", () => {
         iat: 1792454400,
         ...(priceDecadeClaim === undefined ? {} : { price_decade: priceDecadeClaim }),
       };
-      const header = b64u(JSON.stringify({ alg: "EdDSA", typ: "pubky-purchase-attestation+v1" }));
-      const payload = b64u(JSON.stringify(claims));
-      const signature = cryptoSign(null, Buffer.from(`${header}.${payload}`), privateKey);
       const { review } = buildReview(OTTO, {
         schemaVersion: 1,
         recordType: "review",
@@ -548,10 +552,33 @@ describe("pubky-market-specs", () => {
         role: "buyer_reviewing_seller",
         ratings: { overall: 5, shipping: 4, communication: 5 },
         text,
-        eligibilityAttestation: `${header}.${payload}.${b64u(signature)}`,
+        eligibilityAttestation: signAttestation(claims),
         orderRef: ORDER_REF,
       });
       return review.toJson();
+    };
+
+    const attestedRecord = (owner, subject, listingOwner, role) => {
+      const review = attestedReview(ITEM_A, "");
+      const claims = {
+        v: 1,
+        iss,
+        sub: owner,
+        cpk: subject,
+        role,
+        listing: `pubky://${listingOwner}/pub/pubky.app/marketplace/v1/listings/${ITEM_A}`,
+        order_ref: ORDER_REF,
+        completed_on: "2026-10-20",
+        iat: 1792454400,
+      };
+      return {
+        ...review,
+        ownerPubky: owner,
+        subjectPubky: subject,
+        listingOwnerPubky: listingOwner,
+        role,
+        eligibilityAttestation: signAttestation(claims),
+      };
     };
 
     it("should accept a review with empty text", () => {
@@ -570,6 +597,121 @@ describe("pubky-market-specs", () => {
       assert.notStrictEqual(itemCountKey(reviewA), itemCountKey(reviewB));
       assert.strictEqual(sellerRatingKey(reviewA), `${iss}:${ORDER_REF}:buyer_reviewing_seller`);
       assert.strictEqual(sellerRatingKey(reviewA), sellerRatingKey(reviewB));
+    });
+
+    it("should refuse a review whose subject is its owner, in both roles", () => {
+      const review = attestedReview(ITEM_A, "");
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        assert.throws(
+          () => buildReview(RIO, { ...review, role, ownerPubky: RIO }),
+          /subjectPubky must not equal ownerPubky/
+        );
+        assert.throws(
+          () => buildReview(RIO, { ...review, role }),
+          /subjectPubky must not equal the review path's owner/
+        );
+      }
+    });
+
+    it("should refuse a self-review whose subject spells the owner's key differently", () => {
+      // RIO with its last character's unused bits changed: the same key.
+      const rioAlias = RIO.slice(0, -1) + "t";
+      const review = attestedReview(ITEM_A, "");
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        assert.throws(
+          () => buildReview(RIO, { ...review, role, ownerPubky: RIO, subjectPubky: rioAlias }),
+          /subjectPubky must not equal ownerPubky/
+        );
+        assert.throws(
+          () => buildReview(RIO, { ...review, role, ownerPubky: OTTO, subjectPubky: rioAlias }),
+          /subjectPubky must not equal the review path's owner/
+        );
+      }
+    });
+
+    it("should refuse a canonical self-subject in every verification helper and role", () => {
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        const owner = role === "buyer_reviewing_seller" ? OTTO : RIO;
+        const review = attestedRecord(owner, owner, RIO, role);
+        for (const helper of [verifyPurchaseAttestation, itemCountKey, sellerRatingKey]) {
+          assert.throws(
+            () => helper(review),
+            /subjectPubky must not equal ownerPubky/,
+            `${role} must be refused`
+          );
+        }
+      }
+    });
+
+    it("should refuse an alias self-subject in every verification helper and role", () => {
+      const rioAlias = RIO.slice(0, -1) + "t";
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        const review = attestedRecord(RIO, rioAlias, RIO, role);
+        for (const helper of [verifyPurchaseAttestation, itemCountKey, sellerRatingKey]) {
+          assert.throws(
+            () => helper(review),
+            /subjectPubky must not equal ownerPubky/,
+            `${role} must be refused`
+          );
+        }
+      }
+    });
+
+    it("should verify and key distinct-owner records in both roles", () => {
+      const buyerReview = attestedReview(ITEM_A, "Great boots.");
+      const { review: sellerBuilt } = buildReview(
+        RIO,
+        attestedRecord(RIO, OTTO, RIO, "seller_reviewing_buyer")
+      );
+      const sellerReview = sellerBuilt.toJson();
+
+      for (const [review, role] of [
+        [buyerReview, "buyer_reviewing_seller"],
+        [sellerReview, "seller_reviewing_buyer"],
+      ]) {
+        assert.strictEqual(verifyPurchaseAttestation(review).role, role);
+        assert.strictEqual(itemCountKey(review), `${iss}:${ORDER_REF}:${role}:${RIO}:${ITEM_A}`);
+        assert.strictEqual(sellerRatingKey(review), `${iss}:${ORDER_REF}:${role}`);
+      }
+    });
+
+    it("should refuse an alias path owner that names the subject key", () => {
+      const rioAlias = RIO.slice(0, -1) + "t";
+      const review = {
+        ...attestedReview(ITEM_A, ""),
+        ownerPubky: OTTO,
+        subjectPubky: RIO,
+      };
+      assert.throws(
+        () => buildReview(rioAlias, review),
+        /subjectPubky must not equal the review path's owner/
+      );
+    });
+
+    it("should build a review whose subject is one bit away from the owner's key", () => {
+      // RIO with its last character's data bit changed: another key.
+      const rioNeighbour = RIO.slice(0, -1) + "y";
+      const review = attestedReview(ITEM_A, "");
+      for (const role of ["buyer_reviewing_seller", "seller_reviewing_buyer"]) {
+        const { review: built } = buildReview(RIO, {
+          ...review,
+          role,
+          ownerPubky: RIO,
+          subjectPubky: rioNeighbour,
+        });
+        assert.strictEqual(built.toJson().subjectPubky, rioNeighbour);
+      }
+    });
+
+    it("should build a seller's review of a buyer on the seller's own listing", () => {
+      const review = attestedReview(ITEM_A, "");
+      const { review: built } = buildReview(RIO, {
+        ...review,
+        ownerPubky: RIO,
+        subjectPubky: OTTO,
+        role: "seller_reviewing_buyer",
+      });
+      assert.strictEqual(built.toJson().subjectPubky, OTTO);
     });
 
     it("should refuse to key a review whose attestation does not verify", () => {

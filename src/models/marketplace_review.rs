@@ -1,6 +1,6 @@
 use crate::{
     models::marketplace::{
-        validate_base_record, validate_entity_id, validate_hex_hash, validate_pubky,
+        same_pubky, validate_base_record, validate_entity_id, validate_hex_hash, validate_pubky,
     },
     models::marketplace_attestation::PubkyMarketPurchaseAttestation,
     traits::{HasIdPath, HashId, Validatable},
@@ -17,7 +17,8 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-// Validation (mirroring the pubky-app commerce review record schema)
+// Validation (the pubky-app commerce review record schema, plus a refusal of
+// reviews whose subject is their owner)
 const REVIEW_RECORD_TYPE: &str = "review";
 const MAX_REVIEW_TEXT_LENGTH: usize = 5_000;
 const MIN_RATING: i64 = 1;
@@ -211,7 +212,8 @@ impl PubkyMarketReview {
     /// `order_ref` come from the embedded attestation, which must bind this
     /// record; a record without `orderRef` keys by the attestation's
     /// `order_ref`, so it shares its key with a scoped twin of the same item.
-    /// Signature verification and trust in `iss` stay with the caller.
+    /// It refuses a self-review through `verify_binding`. Signature verification
+    /// and trust in `iss` stay with the caller.
     pub fn item_count_key(
         &self,
         attestation: &PubkyMarketPurchaseAttestation,
@@ -366,6 +368,9 @@ impl Validatable for PubkyMarketReview {
         )?;
         validate_entity_id(&self.review_id, "reviewId")?;
         validate_pubky(&self.subject_pubky, "subjectPubky")?;
+        if same_pubky(&self.owner_pubky, &self.subject_pubky) {
+            return Err("Validation Error: subjectPubky must not equal ownerPubky".into());
+        }
         validate_pubky(&self.listing_owner_pubky, "listingOwnerPubky")?;
         validate_entity_id(&self.listing_id, "listingId")?;
         if let Some(order_ref) = &self.order_ref {
@@ -495,8 +500,102 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_valid() {
+    fn test_validate_accepts_buyer_reviewing_seller() {
         let review = valid_review();
+        let id = review.review_id.clone();
+        assert!(review.validate(Some(&id)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_rejects_buyer_reviewing_self() {
+        let mut review = valid_review();
+        review.owner_pubky = SELLER.to_string();
+        review.review_id = review.create_id();
+        let id = review.review_id.clone();
+        let error = review.validate(Some(&id)).unwrap_err();
+        assert!(error.contains("subjectPubky must not equal ownerPubky"));
+    }
+
+    #[test]
+    fn test_validate_rejects_seller_reviewing_self() {
+        let mut review = valid_review();
+        review.owner_pubky = SELLER.to_string();
+        review.role = PubkyMarketReviewRole::SellerReviewingBuyer;
+        review.review_id = review.create_id();
+        let id = review.review_id.clone();
+        let error = review.validate(Some(&id)).unwrap_err();
+        assert!(error.contains("subjectPubky must not equal ownerPubky"));
+    }
+
+    #[test]
+    fn test_validate_rejects_self_review_on_another_sellers_listing() {
+        for role in [
+            PubkyMarketReviewRole::BuyerReviewingSeller,
+            PubkyMarketReviewRole::SellerReviewingBuyer,
+        ] {
+            let mut review = valid_review();
+            review.owner_pubky = REVIEWER.to_string();
+            review.subject_pubky = REVIEWER.to_string();
+            review.listing_owner_pubky =
+                "7jfgaa9nutjyixzikb7tgmsf9gkwq7iqz498zr1nd5ig1fng4esy".to_string();
+            review.role = role;
+            review.review_id = review.create_id();
+            let id = review.review_id.clone();
+            let error = review.validate(Some(&id)).unwrap_err();
+            assert!(
+                error.contains("subjectPubky must not equal ownerPubky"),
+                "unexpected error for {}: {error}",
+                role.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_accepts_seller_reviewing_buyer() {
+        let mut review = valid_review();
+        review.owner_pubky = SELLER.to_string();
+        review.subject_pubky = REVIEWER.to_string();
+        review.listing_owner_pubky = SELLER.to_string();
+        review.role = PubkyMarketReviewRole::SellerReviewingBuyer;
+        review.review_id = review.create_id();
+        let id = review.review_id.clone();
+        assert!(review.validate(Some(&id)).is_ok());
+    }
+
+    /// `SELLER` with its last character's unused bits changed: the same key.
+    const SELLER_ALIAS: &str = "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jb";
+    /// `SELLER` with its last character's data bit changed: another key.
+    const SELLER_NEIGHBOUR: &str = "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jo";
+
+    #[test]
+    fn test_validate_rejects_self_review_spelled_differently() {
+        for role in [
+            PubkyMarketReviewRole::BuyerReviewingSeller,
+            PubkyMarketReviewRole::SellerReviewingBuyer,
+        ] {
+            for (owner, subject) in [(SELLER, SELLER_ALIAS), (SELLER_ALIAS, SELLER)] {
+                let mut review = valid_review();
+                review.owner_pubky = owner.to_string();
+                review.subject_pubky = subject.to_string();
+                review.role = role;
+                review.review_id = review.create_id();
+                let id = review.review_id.clone();
+                let error = review.validate(Some(&id)).unwrap_err();
+                assert!(
+                    error.contains("subjectPubky must not equal ownerPubky"),
+                    "unexpected error for {} {owner} {subject}: {error}",
+                    role.as_str()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_validate_accepts_subject_one_bit_from_owner() {
+        let mut review = valid_review();
+        review.owner_pubky = SELLER.to_string();
+        review.subject_pubky = SELLER_NEIGHBOUR.to_string();
+        review.review_id = review.create_id();
         let id = review.review_id.clone();
         assert!(review.validate(Some(&id)).is_ok());
     }
