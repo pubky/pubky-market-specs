@@ -434,7 +434,9 @@ mod tests {
         let neighbour = "operrr8wsbpr3ue9d4qj41ge1kcc6r7fdiy6o3ugjrrhi4y77rdy";
         assert!(same_pubky(key, key));
         assert!(same_pubky(key, alias));
+        assert!(same_pubky(alias, key));
         assert!(!same_pubky(key, neighbour));
+        assert!(!same_pubky(neighbour, key));
         assert!(!same_pubky(
             key,
             "pxnu33x7jtpx9ar1ytsi4yxbp6a5o36gwhffs8zoxmbuptici1jy"

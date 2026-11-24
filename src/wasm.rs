@@ -124,7 +124,8 @@ pub fn build_listing(owner_pubky: &str, listing: JsValue) -> Result<ListingResul
 
 /// Builds a review record. The hash ID is derived from the reviewed listing
 /// URI, subject, role and (when present) `orderRef`, and written into the
-/// record's `reviewId`.
+/// record's `reviewId`. Throws when `subjectPubky` names the same key as the
+/// record's `ownerPubky` or as `owner_pubky`, in any spelling.
 #[wasm_bindgen(js_name = buildReview)]
 pub fn build_review(owner_pubky: &str, review: JsValue) -> Result<ReviewResult, String> {
     let owner = owner(owner_pubky)?;
@@ -425,10 +426,10 @@ pub fn parse_purchase_attestation(jws: &str) -> Result<JsValue, String> {
     to_value(&attestation.claims).map_err(|e| e.to_string())
 }
 
-/// The full local verification recipe for one review record: parses the
-/// record (camelCase JSON) against the spec, refuses a self-review (the same
-/// key in any spelling), parses its embedded attestation, verifies the Ed25519
-/// signature against the `iss` pubky, and checks the claim bindings. Returns
+/// The full local verification recipe for one review record: deserializes the
+/// record (camelCase JSON), parses its embedded attestation, verifies the
+/// Ed25519 signature against the `iss` pubky, and checks the claim bindings,
+/// which first refuse a self-review (the same key in any spelling). Returns
 /// the verified claims with wire-format snake_case keys. Whether `iss` is a
 /// *trusted* attestor remains the caller's policy decision.
 #[wasm_bindgen(js_name = verifyPurchaseAttestation)]

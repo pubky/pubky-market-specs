@@ -18,8 +18,9 @@
 //!    [`PubkyMarketPurchaseAttestation::verify_binding`]: first refuse a review
 //!    whose `subjectPubky` names the same key as its `ownerPubky`, in any
 //!    spelling, then require `sub` to equal the record's `ownerPubky`, `cpk` its
-//!    `subjectPubky`, `listing` the canonical listing URI, and `role` the record's
-//!    role. [`PubkyMarketPurchaseAttestation::verify_for_review`],
+//!    `subjectPubky`, `listing` the canonical listing URI, `role` the record's
+//!    role, and `order_ref` the record's `orderRef` when the record carries one.
+//!    [`PubkyMarketPurchaseAttestation::verify_for_review`],
 //!    [`PubkyMarketReview::item_count_key`] and
 //!    [`PubkyMarketReview::seller_rating_key`] apply this rule through
 //!    `verify_binding`.
@@ -206,7 +207,8 @@ impl PubkyMarketPurchaseAttestation {
     /// First refuses a review whose subject is its owner (the same key in any
     /// spelling), then checks that the claims cover exactly this review record:
     /// `sub` is the record owner, `cpk` the subject, `listing` the canonical
-    /// listing URI, and `role` the record role. Any mismatch means the
+    /// listing URI, `role` the record role, and `order_ref` the record's
+    /// `orderRef` when the record carries one. Any mismatch means the
     /// attestation does not cover the review.
     pub fn verify_binding(&self, review: &PubkyMarketReview) -> Result<(), String> {
         if same_pubky(&review.owner_pubky, &review.subject_pubky) {
@@ -581,6 +583,18 @@ mod tests {
             (
                 SELLER,
                 SELLER_ALIAS,
+                SELLER,
+                PubkyMarketReviewRole::SellerReviewingBuyer,
+            ),
+            (
+                REVIEWER_ALIAS,
+                REVIEWER,
+                SELLER,
+                PubkyMarketReviewRole::BuyerReviewingSeller,
+            ),
+            (
+                SELLER_ALIAS,
+                SELLER,
                 SELLER,
                 PubkyMarketReviewRole::SellerReviewingBuyer,
             ),
