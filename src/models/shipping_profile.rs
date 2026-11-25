@@ -1,7 +1,8 @@
 use crate::{
     models::listing::PubkyMarketShippingOption,
     models::marketplace::{
-        validate_base_record, validate_entity_id, PubkyMarketMoney, MAX_SAFE_INTEGER,
+        parse_rfc3339_millis, validate_base_record, validate_entity_id, PubkyMarketMoney,
+        MAX_SAFE_INTEGER,
     },
     traits::{HasIdPath, Validatable},
     APP_PATH, PUBLIC_PATH,
@@ -26,6 +27,8 @@ const MAX_RATES_PER_ZONE: usize = 10;
 const MAX_COUNTRIES: usize = 250;
 const MAX_ORIGINS: usize = 50;
 const MAX_DELIVERY_ESTIMATE_DAYS: i64 = 365;
+const MAX_SOURCE_PROVIDER_LENGTH: usize = 32;
+const MAX_SOURCE_EXTERNAL_ID_LENGTH: usize = 256;
 /// The most units one shipping group may quote.
 pub const MAX_SHIPPING_GROUP_UNITS: i64 = 1_000_000;
 
@@ -327,6 +330,50 @@ pub fn validate_shipping_zones(zones: &[PubkyMarketShippingZone]) -> Result<(), 
     Ok(())
 }
 
+/// Where an imported profile came from: the store system, the store's own id
+/// of the profile it was made from, and when it was imported. Display and
+/// provenance only, never priced: a client that imports profiles uses it to
+/// tell its own imports from profiles the seller wrote, and re-imports only
+/// those.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct PubkyMarketShippingProfileSource {
+    /// The store system, lowercase: `shopify`, `woocommerce`, ...
+    pub provider: String,
+    /// The store's own identifier of the profile, exactly as the store gives it.
+    pub external_id: String,
+    /// ISO-8601 datetime with offset of the import.
+    pub synced_at: String,
+}
+
+impl PubkyMarketShippingProfileSource {
+    fn validate(&self) -> Result<(), String> {
+        let provider_length = self.provider.len();
+        if !(1..=MAX_SOURCE_PROVIDER_LENGTH).contains(&provider_length)
+            || !self.provider.bytes().all(|byte| {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+            })
+        {
+            return Err(format!(
+                "Validation Error: source.provider must be 1-{MAX_SOURCE_PROVIDER_LENGTH} characters of [a-z0-9_-]"
+            ));
+        }
+        let id_length = self.external_id.chars().count();
+        if !(1..=MAX_SOURCE_EXTERNAL_ID_LENGTH).contains(&id_length)
+            || self.external_id.trim() != self.external_id
+            || self.external_id.chars().any(char::is_control)
+        {
+            return Err(format!(
+                "Validation Error: source.externalId must be 1-{MAX_SOURCE_EXTERNAL_ID_LENGTH} characters, without control characters or surrounding whitespace"
+            ));
+        }
+        parse_rfc3339_millis(&self.synced_at)
+            .map_err(|e| format!("Validation Error: source.syncedAt {e}"))?;
+        Ok(())
+    }
+}
+
 /// A seller's reusable shipping rules: where they ship from, which countries
 /// they ship to and what each zone charges. Listings reference a profile by
 /// its id, or carry their own zones.
@@ -376,6 +423,10 @@ pub struct PubkyMarketShippingProfile {
     pub excluded_countries: Vec<String>,
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
     pub zones: Vec<PubkyMarketShippingZone>,
+    /// Where an imported profile came from; absent for one the seller wrote.
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PubkyMarketShippingProfileSource>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -474,6 +525,9 @@ impl Validatable for PubkyMarketShippingProfile {
         self.asset().validate_non_negative("shipping profile")?;
         validate_country_list(&self.origins, "origins", MAX_ORIGINS)?;
         validate_country_list(&self.excluded_countries, "excludedCountries", MAX_COUNTRIES)?;
+        if let Some(source) = &self.source {
+            source.validate()?;
+        }
         validate_shipping_zones(&self.zones)
     }
 }
@@ -749,6 +803,99 @@ mod tests {
             origins: vec!["US".into(), "LV".into()],
             excluded_countries: vec!["RU".into()],
             zones: zones(),
+            source: None,
+        }
+    }
+
+    fn source() -> PubkyMarketShippingProfileSource {
+        PubkyMarketShippingProfileSource {
+            provider: "shopify".into(),
+            external_id: "gid://shopify/DeliveryProfile/107069".into(),
+            synced_at: "2026-11-09T19:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn a_profile_without_a_source_writes_no_source_member() {
+        let value = serde_json::to_value(profile()).unwrap();
+        assert!(value.get("source").is_none(), "{value}");
+    }
+
+    #[test]
+    fn an_imported_profile_keeps_its_source_and_prices_the_same() {
+        let mut imported = profile();
+        imported.source = Some(source());
+        let blob = serde_json::to_vec(&imported).unwrap();
+        let parsed = <PubkyMarketShippingProfile as Validatable>::try_from(&blob, "printful")
+            .expect("valid imported profile");
+        assert_eq!(parsed.source, Some(source()));
+        let value = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(
+            value["source"],
+            serde_json::json!({
+                "provider": "shopify",
+                "externalId": "gid://shopify/DeliveryProfile/107069",
+                "syncedAt": "2026-11-09T19:00:00Z",
+            })
+        );
+        assert_eq!(
+            quote_shipping(&parsed.zones, &parsed.excluded_countries, "US", "std", 2),
+            quote_shipping(
+                &profile().zones,
+                &profile().excluded_countries,
+                "US",
+                "std",
+                2
+            ),
+            "the source changes no price"
+        );
+    }
+
+    #[test]
+    fn a_source_is_refused_when_any_member_is_malformed() {
+        type Mutation = Box<dyn Fn(&mut PubkyMarketShippingProfileSource)>;
+        let cases: Vec<(&str, Mutation)> = vec![
+            ("empty provider", Box::new(|s| s.provider.clear())),
+            (
+                "uppercase provider",
+                Box::new(|s| s.provider = "Shopify".into()),
+            ),
+            (
+                "provider too long",
+                Box::new(|s| s.provider = "a".repeat(33)),
+            ),
+            ("empty external id", Box::new(|s| s.external_id.clear())),
+            (
+                "padded external id",
+                Box::new(|s| s.external_id = " 107069".into()),
+            ),
+            (
+                "control in external id",
+                Box::new(|s| s.external_id = "a\nb".into()),
+            ),
+            (
+                "external id too long",
+                Box::new(|s| s.external_id = "a".repeat(257)),
+            ),
+            (
+                "synced without offset",
+                Box::new(|s| s.synced_at = "2026-11-09T19:00:00".into()),
+            ),
+            (
+                "synced not a date",
+                Box::new(|s| s.synced_at = "yesterday".into()),
+            ),
+        ];
+        for (name, mutate) in cases {
+            let mut imported = profile();
+            let mut bad = source();
+            mutate(&mut bad);
+            imported.source = Some(bad);
+            let blob = serde_json::to_vec(&imported).unwrap();
+            assert!(
+                <PubkyMarketShippingProfile as Validatable>::try_from(&blob, "printful").is_err(),
+                "{name} must be refused"
+            );
         }
     }
 

@@ -1,6 +1,6 @@
 # Pubky Market data model specification
 
-_Version 0.2.0. Wire format identical to the marketplace records of `pubky-app-specs` `0.6.2-marketplace.16`, plus the shipping profile record and the optional `shippingProfileId`, `shippingZones` and `shipsToCountries` members, all additive; `schemaVersion` stays `1`._
+_Version 0.2.1. Wire format identical to the marketplace records of `pubky-app-specs` `0.6.2-marketplace.16`, plus the shipping profile record (with its optional `source`) and the optional `shippingProfileId`, `shippingZones` and `shipsToCountries` members, all additive; `schemaVersion` stays `1`._
 
 ## Table of Contents
 
@@ -145,6 +145,9 @@ Every record lives under the `pubky.app` app directory of its owner's homeserver
 | `origins`           | Array    | Countries the goods ship from.               | Optional (defaults to empty). Up to 50 unique uppercase ISO 3166-1 alpha-2 codes. Display and filter data.     |
 | `excludedCountries` | Array    | Countries never shipped to.                  | Optional (defaults to empty). Up to 250 unique codes. Wins over any zone and over `restOfWorld`.               |
 | `zones`             | Array    | Where goods ship to and at what price.       | Required. 1–50 zones; unique `zoneId`s; a country belongs to at most one zone; at most one zone has `restOfWorld`. |
+| `source`            | Object   | Where an imported profile came from.         | Optional; absent for a profile the seller wrote, and not written when absent. Display and provenance only, never priced. |
+
+**Source:** `provider` (the store system, 1–32 characters of `[a-z0-9_-]`, for example `shopify`), `externalId` (the store's own identifier of the profile it was imported from, 1–256 characters, no control characters or surrounding whitespace) and `syncedAt` (ISO-8601 datetime with offset of the import). A client that imports profiles from a store uses it to tell its imports from profiles the seller wrote, and re-imports only those.
 
 **Zone:** `zoneId` (path-safe entity id), `name` (trimmed, 1–100 characters), `countries` (unique uppercase alpha-2 codes, up to 250), `restOfWorld` (boolean, absent means `false`) and `rates` (1–10, unique `rateId`s). A zone needs `countries` or `restOfWorld`.
 
